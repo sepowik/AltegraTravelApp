@@ -94,6 +94,43 @@ test('dates too old or in the future are ignored', () => {
   assert.equal(findDate('Datum 2026-09-01', now), '2026-09-01');
 });
 
+test('Spanish restaurant receipt', () => {
+  const text = `RESTAURANTE CASA LUCIO
+C/ Cava Baja 35, 28005 Madrid
+CIF B12345678
+Fecha: 21 de septiembre de 2026 21:40
+2 Huevos estrellados      32,00
+1 Vino tinto              18,50
+Base imponible            45,91
+IVA 10%                    4,59
+TOTAL A PAGAR          50,50 €
+Tarjeta                   50,50`;
+  const r = parseReceiptText(text, { now });
+  assert.equal(r.amount, 50.5);
+  assert.equal(r.vat, 4.59);
+  assert.equal(r.date, '2026-09-21');
+  assert.equal(r.currency, 'EUR');
+  assert.equal(r.merchant, 'Restaurante Casa Lucio');
+  assert.equal(r.category, 'Meal');
+});
+
+test('Indian taxi receipt with GST in rupees', () => {
+  const text = `Ola
+Trip invoice
+20 Sep 2026
+Ride fare          Rs. 420.00
+CGST 2.5%          Rs. 10.50
+SGST 2.5%          Rs. 10.50
+Total Amount       ₹ 441.00
+Paid by UPI`;
+  const r = parseReceiptText(text, { now });
+  assert.equal(r.amount, 441);
+  assert.equal(r.currency, 'INR');
+  assert.equal(r.date, '2026-09-20');
+  assert.equal(r.category, 'Taxi');
+  assert.equal(r.vat, 21);
+});
+
 test('garbage gives an empty result', () => {
   assert.deepEqual(parseReceiptText('~~ ## ..', { now }), {});
   assert.deepEqual(parseReceiptText('', { now }), {});

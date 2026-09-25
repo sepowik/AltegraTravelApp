@@ -22,7 +22,7 @@ export const CATEGORIES = [
   'Fuel', 'Rental car', 'Mileage', 'Toll', 'Conference', 'Other',
 ];
 
-export const CURRENCIES = ['SEK', 'EUR', 'USD', 'NOK', 'DKK', 'GBP', 'CHF', 'PLN'];
+export const CURRENCIES = ['SEK', 'EUR', 'USD', 'NOK', 'DKK', 'GBP', 'CHF', 'PLN', 'INR'];
 
 export const STATUSES = [{ id: 'todo' }, { id: 'reported' }, { id: 'reimbursed' }].map(withLabel('status'));
 

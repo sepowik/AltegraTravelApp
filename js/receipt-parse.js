@@ -4,12 +4,12 @@
 
 // Words that mark the line with the amount actually paid, strongest first.
 const TOTAL_WORDS = [
-  ['att betala', 'to pay', 'amount due', 'zu zahlen', 'gesamtbetrag', 'grand total', 'totalbelopp', 'summe eur', 'total sek', 'total eur'],
-  ['totalt', 'total', 'summa', 'summe', 'gesamt', 'betalt', 'paid', 'bezahlt'],
-  ['kortbetalning', 'kort', 'card', 'visa', 'mastercard', 'bankkort', 'kontokort', 'karte', 'ec-karte', 'belopp', 'betrag', 'amount', 'kontant', 'cash', 'bar'],
+  ['att betala', 'to pay', 'amount due', 'zu zahlen', 'gesamtbetrag', 'grand total', 'totalbelopp', 'summe eur', 'total sek', 'total eur', 'total a pagar', 'importe total', 'net payable', 'total amount', 'grand total rs'],
+  ['totalt', 'total', 'summa', 'summe', 'gesamt', 'betalt', 'paid', 'bezahlt', 'pagado', 'importe'],
+  ['kortbetalning', 'kort', 'card', 'visa', 'mastercard', 'bankkort', 'kontokort', 'karte', 'ec-karte', 'belopp', 'betrag', 'amount', 'kontant', 'cash', 'bar', 'tarjeta', 'efectivo', 'upi'],
 ];
-const VAT_WORDS = ['moms', 'vat', 'mwst', 'mw.st', 'ust', 'mehrwertsteuer', 'tax', 'varav'];
-const NOT_TOTAL_WORDS = ['netto', 'exkl', 'excl', 'subtotal', 'delsumma', 'zwischensumme', 'växel', 'vaxel', 'change', 'rückgeld', 'retur', 'rabatt', 'discount', 'tips', 'dricks'];
+const VAT_WORDS = ['moms', 'vat', 'mwst', 'mw.st', 'ust', 'mehrwertsteuer', 'tax', 'varav', 'iva', 'gst', 'cgst', 'sgst', 'igst'];
+const NOT_TOTAL_WORDS = ['netto', 'exkl', 'excl', 'subtotal', 'delsumma', 'zwischensumme', 'växel', 'vaxel', 'change', 'rückgeld', 'retur', 'rabatt', 'discount', 'tips', 'dricks', 'base imponible', 'cambio', 'propina', 'taxable value', 'round off'];
 
 const CURRENCY_HINTS = [
   ['EUR', /€|\beur\b|\beuro\b/i],
@@ -19,20 +19,21 @@ const CURRENCY_HINTS = [
   ['DKK', /\bdkk\b/i],
   ['CHF', /\bchf\b/i],
   ['PLN', /\bpln\b|\bzł\b/i],
+  ['INR', /₹|\binr\b|\brs\.?\s?\d/i],
   ['SEK', /\bsek\b|\bkr\b|\d:-|\bkronor\b/i],
 ];
 
 const CATEGORY_HINTS = [
-  ['Hotel', /\bhotell?\b|scandic|radisson|clarion|quality hotel|elite hotel|best western|comfort hotel|hilton|marriott|ibis|novotel|motel|hostel|logi|übernachtung|nights?\b|nätter|natt\b/i],
-  ['Taxi', /\btaxi\b|\buber\b|\bbolt\b|cabonline|taxikurir|sverigetaxi|\bcab\b/i],
-  ['Train', /\bsj\b|\bmtr\b|\btåg\b|\btag\b|\btrain\b|deutsche bahn|\bdb\b|\bice\b|öresundståg|snälltåget|\bvy\b|\bbahn\b|arlanda express|flygtåget/i],
-  ['Flight', /\bsas\b|norwegian|lufthansa|ryanair|klm|finnair|braathens|\bflyg\b|\bflight\b|boarding|\bflug\b/i],
-  ['Parking', /parkering|parking|easypark|\bparken\b|apcoa|q-park|aimo|parkster|parkhaus/i],
-  ['Fuel', /circle k|preem|okq8|\bst1\b|\bshell\b|ingo|\bqstar\b|diesel|bensin|\bfuel\b|\baral\b|\besso\b|kraftstoff|\bliter\b|\blitres?\b/i],
+  ['Hotel', /\bhotell?\b|scandic|radisson|clarion|quality hotel|elite hotel|best western|comfort hotel|hilton|marriott|ibis|novotel|motel|hostel|hostal|logi|oyo|taj hotels|übernachtung|nights?\b|nätter|natt\b/i],
+  ['Taxi', /\btaxi\b|\buber\b|\bbolt\b|cabonline|taxikurir|sverigetaxi|\bcab\b|\bola\b|cabify/i],
+  ['Train', /\bsj\b|\bmtr\b|\btåg\b|\btag\b|\btrain\b|deutsche bahn|\bdb\b|\bice\b|öresundståg|snälltåget|\bvy\b|\bbahn\b|arlanda express|flygtåget|renfe|\bave\b|\btren\b|irctc|indian railways/i],
+  ['Flight', /\bsas\b|norwegian|lufthansa|ryanair|klm|finnair|braathens|\bflyg\b|\bflight\b|boarding|\bflug\b|iberia|vueling|\bvuelo\b|indigo|air india|vistara|akasa/i],
+  ['Parking', /parkering|parking|easypark|\bparken\b|apcoa|q-park|aimo|parkster|parkhaus|aparcamiento/i],
+  ['Fuel', /circle k|preem|okq8|\bst1\b|\bshell\b|ingo|\bqstar\b|diesel|bensin|\bfuel\b|\baral\b|\besso\b|kraftstoff|\bliter\b|\blitres?\b|gasolin|repsol|cepsa|\bpetrol\b|hpcl|bpcl|indian oil/i],
   ['Rental car', /hertz|\bavis\b|europcar|\bsixt\b|enterprise rent|budget rent|biluthyrning|mietwagen|car rental/i],
-  ['Toll', /trängselskatt|brobizz|öresundsbron|\bmaut\b|\btoll\b|vägavgift|infrastrukturavgift/i],
-  ['Local transport', /\bsl\b|västtrafik|skånetrafiken|\bul\b|östgötatrafiken|\bbuss\b|\bbus\b|tunnelbana|u-bahn|s-bahn|\bmetro\b|\btram\b|spårvagn|\bmvv\b|\bbvg\b|\bhvv\b|ruter/i],
-  ['Meal', /restaurang|restaurant|\bcaf[eé]\b|kaffe|espresso|coffee|lunch|middag|frukost|dinner|breakfast|pizza|burger|\bbar\b|bistro|gasthaus|kneipe|mcdonald|max hamburgare|pressbyrån|7-eleven|\bsushi\b|kebab|\bmat\b|gaststätte|bäckerei|konditori/i],
+  ['Toll', /trängselskatt|brobizz|öresundsbron|\bmaut\b|\btoll\b|vägavgift|infrastrukturavgift|\bpeaje\b|autopista|fastag/i],
+  ['Local transport', /\bsl\b|västtrafik|skånetrafiken|\bul\b|östgötatrafiken|\bbuss\b|\bbus\b|tunnelbana|u-bahn|s-bahn|\bmetro\b|\btram\b|spårvagn|\bmvv\b|\bbvg\b|\bhvv\b|ruter|autob[uú]s|\bemt\b|\btmb\b/i],
+  ['Meal', /restaurang|restaurant|\bcaf[eé]\b|kaffe|espresso|coffee|lunch|middag|frukost|dinner|breakfast|pizza|burger|\bbar\b|bistro|gasthaus|kneipe|mcdonald|max hamburgare|pressbyrån|7-eleven|\bsushi\b|kebab|\bmat\b|gaststätte|bäckerei|konditori|restaurante|cafeter[ií]a|\bcomida\b|\bcena\b|tapas|dhaba|zomato|swiggy/i],
   ['Conference', /konferens|conference|seminar|tagung|kongress|registration fee/i],
 ];
 
@@ -49,6 +50,8 @@ const MONTHS = {
   okt: 10, oct: 10, oktober: 10, october: 10,
   nov: 11, november: 11,
   dec: 12, dez: 12, december: 12, dezember: 12,
+  ene: 1, enero: 1, febrero: 2, marzo: 3, abril: 4, abr: 4, mayo: 5, junio: 6, julio: 7,
+  agosto: 8, ago: 8, septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12, dic: 12,
 };
 
 // Matches money amounts: 1 234,56 / 1.234,56 / 1,234.56 / 245.00 / 245,- / 245:-
@@ -101,6 +104,11 @@ export function findTotal(lines) {
 }
 
 export function findVat(lines, total) {
+  // Indian GST is split into central + state halves that together make the tax.
+  const half = (w) => lines.filter((l) => hasWord(l, [w])).map((l) => amountsIn(l).filter((n) => total == null || n < total * 0.35)).find((a) => a.length)?.[0];
+  const cgst = half('cgst');
+  const sgst = half('sgst');
+  if (cgst != null && sgst != null) return Math.round((cgst + sgst) * 100) / 100;
   const found = [];
   lines.forEach((line, i) => {
     if (!hasWord(line, VAT_WORDS) || hasWord(line, ['exkl', 'excl', 'netto'])) return;
@@ -130,7 +138,7 @@ export function findDate(text, now = Date.now()) {
   const push = (idx, v) => { if (v) candidates.push([idx, v]); };
   for (const m of text.matchAll(/\b(20\d{2})[-./](\d{1,2})[-./](\d{1,2})\b/g)) push(m.index, validDate(+m[1], +m[2], +m[3], now));
   for (const m of text.matchAll(/\b(\d{1,2})[-./](\d{1,2})[-./](20\d{2}|\d{2})\b/g)) push(m.index, validDate(+m[3], +m[2], +m[1], now));
-  for (const m of text.matchAll(/\b(\d{1,2})\.?\s+([a-zäöüé]{3,9})\.?\s+(20\d{2})\b/gi)) {
+  for (const m of text.matchAll(/\b(\d{1,2})\.?\s+(?:de\s+)?([a-zäöüéñ]{3,10})\.?\s+(?:de\s+)?(20\d{2})\b/gi)) {
     const mon = MONTHS[m[2].toLowerCase()];
     if (mon) push(m.index, validDate(+m[3], mon, +m[1], now));
   }

@@ -5,6 +5,11 @@ import { expenseValues, formatDuration, TRANSPORTS, expensesCsv } from '../js/ut
 
 afterEach(() => setLanguage(DEFAULT_LANGUAGE));
 
+test('all five languages are offered', async () => {
+  const { LANGUAGES } = await import('../js/i18n.js');
+  assert.deepEqual(LANGUAGES.map((l) => l.id), ['en', 'sv', 'de', 'es', 'hi']);
+});
+
 test('default language is English', () => {
   assert.equal(DEFAULT_LANGUAGE, 'en');
   assert.equal(getLanguage(), 'en');
@@ -13,7 +18,7 @@ test('default language is English', () => {
 
 test('all languages define the same keys', () => {
   const keys = Object.keys(DICTIONARIES.en).sort();
-  for (const lang of ['sv', 'de']) {
+  for (const lang of Object.keys(DICTIONARIES).filter((l) => l !== 'en')) {
     const other = Object.keys(DICTIONARIES[lang]).sort();
     assert.deepEqual(other.filter((k) => !keys.includes(k)), [], `${lang} has extra keys`);
     assert.deepEqual(keys.filter((k) => !other.includes(k)), [], `${lang} is missing keys`);
@@ -23,7 +28,7 @@ test('all languages define the same keys', () => {
 test('placeholders match across languages', () => {
   const ph = (v) => JSON.stringify([].concat(v).map((s) => (s.match(/\{\w+\}/g) || []).sort()));
   for (const [k, v] of Object.entries(DICTIONARIES.en)) {
-    for (const lang of ['sv', 'de']) assert.equal(ph(DICTIONARIES[lang][k]), ph(v), `${lang}.${k}`);
+    for (const lang of Object.keys(DICTIONARIES).filter((l) => l !== 'en')) assert.equal(ph(DICTIONARIES[lang][k]), ph(v), `${lang}.${k}`);
   }
 });
 
@@ -34,6 +39,10 @@ test('switching language, plurals and unknown language', () => {
   setLanguage('de');
   assert.equal(t('receipt', { n: 1 }), 'Beleg');
   assert.equal(TRANSPORTS[0].label, 'Privat-Pkw');
+  setLanguage('es');
+  assert.equal(t('nav.trips'), 'Viajes');
+  setLanguage('hi');
+  assert.equal(t('nav.expenses'), 'खर्च');
   setLanguage('xx');
   assert.equal(getLanguage(), 'en');
 });
