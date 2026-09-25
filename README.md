@@ -27,6 +27,11 @@ You record each trip and expense once, then copy it into whichever company's exp
 - CSV export (per company or all), bulk share of receipts, bulk "mark reported".
 - Status per expense: *To report → Reported → Reimbursed*.
 
+**Languages**
+- English (default), Swedish and German. Pick one under Settings → Language. The choice is saved on the phone and used every time the app opens.
+- Categories, transports and statuses are stored language-neutral, so switching language never changes your data. Copied text (categories, payment method, trip summary) follows the selected language, unless a company has its own category names.
+- A company's trip copy format is filled in with the current language when you create the company, and after that it's yours to edit.
+
 **Data**
 - Everything is stored on the phone (IndexedDB). Nothing is sent anywhere except:
   - coordinates to OpenStreetMap Nominatim, to look up the address (only when online)
@@ -59,6 +64,7 @@ npm test       # unit tests for the pure helpers (Node 20+)
 | --- | --- |
 | `index.html`, `css/app.css` | App shell and styles (light/dark) |
 | `js/app.js` | Router and all views |
+| `js/i18n.js` | Translations (en/sv/de) and the `t()` lookup |
 | `js/util.js` | Pure helpers: templates, CSV, legs/distances, formatting (unit tested) |
 | `js/db.js` | IndexedDB storage, backup export/import |
 | `js/geo.js` | GPS, reverse geocoding, road distance |

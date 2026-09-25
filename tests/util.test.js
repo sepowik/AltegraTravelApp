@@ -74,5 +74,5 @@ test('expenseValues maps categories per company', () => {
   assert.equal(v.my_category, 'Taxi');
   assert.equal(renderTemplate(DEFAULT_EXPENSE_TEMPLATE, v), '2026-09-21\t389,00\tSEK\tLocal transport\tTaxi Sthlm\tAirport');
   const csv = expensesCsv([e], { tripsById: { t1: trip }, company });
-  assert.match(csv.split('\r\n')[1], /^2026-09-21;389,00;SEK;Local transport;Taxi Sthlm;Airport;;Stockholm;Customer meeting;todo$/);
+  assert.match(csv.split('\r\n')[1], /^2026-09-21;389,00;SEK;Local transport;Taxi Sthlm;Airport;;Stockholm;Customer meeting;To report$/);
 });

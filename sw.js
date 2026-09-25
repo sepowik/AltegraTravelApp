@@ -1,5 +1,5 @@
 // Offline support: the app shell is cached; bump VERSION when shipping changes.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `travel-${VERSION}`;
 const SHELL = [
   './',
@@ -8,6 +8,7 @@ const SHELL = [
   'js/app.js',
   'js/db.js',
   'js/geo.js',
+  'js/i18n.js',
   'js/receipts.js',
   'js/ui.js',
   'js/util.js',

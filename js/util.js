@@ -1,17 +1,21 @@
 // Pure helpers with no DOM or storage dependencies (unit tested in tests/).
+import { t, label } from './i18n.js';
+
+// Labels are getters so they follow the selected language.
+const withLabel = (prefix) => (o) => Object.defineProperty(o, 'label', { get: () => label(prefix, o.id), enumerable: true });
 
 export const TRANSPORTS = [
-  { id: 'car', label: 'Own car', icon: '🚗' },
-  { id: 'company_car', label: 'Company car', icon: '🚙' },
-  { id: 'train', label: 'Train', icon: '🚆' },
-  { id: 'flight', label: 'Flight', icon: '✈️' },
-  { id: 'taxi', label: 'Taxi', icon: '🚕' },
-  { id: 'bus', label: 'Bus', icon: '🚌' },
-  { id: 'public', label: 'Metro / tram', icon: '🚇' },
-  { id: 'rental', label: 'Rental car', icon: '🔑' },
-  { id: 'boat', label: 'Boat', icon: '⛴️' },
-  { id: 'walk', label: 'Walk / bike', icon: '🚶' },
-];
+  { id: 'car', icon: '🚗' },
+  { id: 'company_car', icon: '🚙' },
+  { id: 'train', icon: '🚆' },
+  { id: 'flight', icon: '✈️' },
+  { id: 'taxi', icon: '🚕' },
+  { id: 'bus', icon: '🚌' },
+  { id: 'public', icon: '🚇' },
+  { id: 'rental', icon: '🔑' },
+  { id: 'boat', icon: '⛴️' },
+  { id: 'walk', icon: '🚶' },
+].map(withLabel('transport'));
 
 export const CATEGORIES = [
   'Hotel', 'Meal', 'Taxi', 'Train', 'Flight', 'Local transport', 'Parking',
@@ -20,14 +24,16 @@ export const CATEGORIES = [
 
 export const CURRENCIES = ['SEK', 'EUR', 'USD', 'NOK', 'DKK', 'GBP', 'CHF', 'PLN'];
 
-export const STATUSES = [
-  { id: 'todo', label: 'To report' },
-  { id: 'reported', label: 'Reported' },
-  { id: 'reimbursed', label: 'Reimbursed' },
-];
+export const STATUSES = [{ id: 'todo' }, { id: 'reported' }, { id: 'reimbursed' }].map(withLabel('status'));
+
+export const PAYMENTS = ['Private card', 'Company card', 'Cash', 'Invoice'];
+
+export const categoryLabel = (c) => label('cat', c);
+export const paymentLabel = (p) => label('pay', p);
+export const statusLabel = (s) => label('status', s);
 
 export function transportById(id) {
-  return TRANSPORTS.find((t) => t.id === id) || { id, label: id || '—', icon: '•' };
+  return TRANSPORTS.find((x) => x.id === id) || { id, label: id || '—', icon: '•' };
 }
 
 export function uid() {
@@ -64,9 +70,10 @@ export function formatDuration(ms) {
   const days = Math.floor(totalMin / 1440);
   const h = Math.floor((totalMin % 1440) / 60);
   const m = totalMin % 60;
-  if (days) return `${days}d ${h}h ${m}m`;
-  if (h) return `${h}h ${m}m`;
-  return `${m}m`;
+  const [ud, uh, um] = [t('dur.d'), t('dur.h'), t('dur.m')];
+  if (days) return `${days}${ud} ${h}${uh} ${m}${um}`;
+  if (h) return `${h}${uh} ${m}${um}`;
+  return `${m}${um}`;
 }
 
 // Parses "123,50" or "1 234.50" into a number.
@@ -156,14 +163,14 @@ export function placeLabel(p) {
   if (!p) return '';
   if (p.place) return p.place;
   if (Number.isFinite(p.lat)) return `${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`;
-  return 'Unknown place';
+  return t('unknownPlace');
 }
 
 export function tripTitle(trip) {
   if (trip.title) return trip.title;
   if (trip.destination) return trip.destination;
   const start = tripStart(trip);
-  return start ? `Trip ${isoDate(start)}` : 'Trip';
+  return start ? t('tripOn', { date: isoDate(start) }) : t('title.trip');
 }
 
 // Placeholder values for an expense, optionally with its trip and company.
@@ -174,12 +181,12 @@ export function expenseValues(expense, { trip, company } = {}) {
     date: expense.date || '',
     amount: formatAmount(expense.amount, sep),
     currency: expense.currency || '',
-    category: mapped || expense.category || '',
-    my_category: expense.category || '',
+    category: mapped || categoryLabel(expense.category),
+    my_category: categoryLabel(expense.category),
     merchant: expense.merchant || '',
     description: expense.description || '',
     vat: Number.isFinite(expense.vat) ? formatAmount(expense.vat, sep) : '',
-    payment: expense.payment || '',
+    payment: paymentLabel(expense.payment),
     company: company?.name || '',
     ...(trip ? tripValues(trip, company) : {}),
   };
@@ -208,18 +215,18 @@ export function tripValues(trip, company) {
 }
 
 export const DEFAULT_EXPENSE_TEMPLATE = '{date}\\t{amount}\\t{currency}\\t{category}\\t{merchant}\\t{description}';
-export const DEFAULT_TRIP_TEMPLATE =
-  '{trip}\\nPurpose: {purpose}\\nDeparture: {start_date} {start_time}, {start_place}\\nReturn: {end_date} {end_time}, {end_place}\\nTransport: {transport}\\nOwn car: {car_km} km';
+// The default trip template has labels, so it follows the selected language.
+export const defaultTripTemplate = () => t('tripTemplate');
 
 export const EXPENSE_PLACEHOLDERS = ['date', 'amount', 'currency', 'category', 'my_category', 'merchant', 'description', 'vat', 'payment', 'company', 'trip', 'purpose', 'destination'];
 export const TRIP_PLACEHOLDERS = ['trip', 'purpose', 'destination', 'start_date', 'start_time', 'start_place', 'end_date', 'end_time', 'end_place', 'transport', 'car_km', 'company'];
 
 // Builds CSV rows for a company export.
 export function expensesCsv(expenses, { tripsById = {}, company } = {}) {
-  const header = ['Date', 'Amount', 'Currency', 'Category', 'Merchant', 'Description', 'VAT', 'Trip', 'Purpose', 'Status'];
+  const header = t('csvHeader').split(';');
   const rows = expenses.map((e) => {
     const v = expenseValues(e, { trip: tripsById[e.tripId], company });
-    return [v.date, v.amount, v.currency, v.category, v.merchant, v.description, v.vat, v.trip || '', v.purpose || '', e.status];
+    return [v.date, v.amount, v.currency, v.category, v.merchant, v.description, v.vat, v.trip || '', v.purpose || '', statusLabel(e.status)];
   });
   return toCsv([header, ...rows], company?.csvSep || ';');
 }

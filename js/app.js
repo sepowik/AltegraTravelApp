@@ -2,11 +2,12 @@ import * as db from './db.js';
 import * as geo from './geo.js';
 import { saveReceipt, shareReceipts, download } from './receipts.js';
 import { esc, options, toast, copyText, sheet, confirmSheet, objectUrl, revokeUrls } from './ui.js';
+import { t, setLanguage, getLanguage, LANGUAGES, DEFAULT_LANGUAGE } from './i18n.js';
 import {
-  TRANSPORTS, CATEGORIES, CURRENCIES, STATUSES, transportById, uid, isoDate, isoTime, dateTime,
-  toLocalInput, formatDuration, parseAmount, formatAmount, formatKm, tripLegs, ownCarKm, tripStart, tripEnd,
-  placeLabel, tripTitle, expenseValues, tripValues, renderTemplate, expensesCsv,
-  DEFAULT_EXPENSE_TEMPLATE, DEFAULT_TRIP_TEMPLATE, EXPENSE_PLACEHOLDERS, TRIP_PLACEHOLDERS,
+  TRANSPORTS, CATEGORIES, CURRENCIES, STATUSES, PAYMENTS, transportById, categoryLabel, paymentLabel,
+  uid, isoDate, isoTime, dateTime, toLocalInput, formatDuration, parseAmount, formatAmount, formatKm,
+  tripLegs, ownCarKm, tripStart, tripEnd, placeLabel, tripTitle, expenseValues, tripValues, renderTemplate,
+  expensesCsv, DEFAULT_EXPENSE_TEMPLATE, defaultTripTemplate, EXPENSE_PLACEHOLDERS, TRIP_PLACEHOLDERS,
 } from './util.js';
 
 const main = document.getElementById('main');
@@ -14,6 +15,32 @@ const titleEl = document.getElementById('title');
 let actions = {};
 let tickTimer;
 let lastHash = null;
+
+// ---------- language ----------
+
+const LANG_CACHE_KEY = 'travel-language';
+
+// The saved language lives in IndexedDB with the other settings; localStorage is only a
+// fast copy so the first paint is already in the right language.
+function cachedLanguage() {
+  try {
+    return localStorage.getItem(LANG_CACHE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+async function applyLanguage(lang, { save = false } = {}) {
+  setLanguage(lang);
+  try {
+    localStorage.setItem(LANG_CACHE_KEY, getLanguage());
+  } catch { /* storage unavailable */ }
+  if (save) await db.setSetting('language', getLanguage());
+  // Static shell text.
+  document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-label]').forEach((el) => el.setAttribute('aria-label', t(el.dataset.i18nLabel)));
+  document.title = t('title.app');
+}
 
 // ---------- routing ----------
 
@@ -44,12 +71,12 @@ async function render() {
     else if (section === 'companies') view = await companiesView();
     else if (section === 'company') view = await companyView(id);
     else if (section === 'settings') view = await settingsView();
-    else view = { title: 'Not found', html: '<p class="empty">Page not found.</p>' };
+    else view = { title: t('title.notFound'), html: `<p class="empty">${esc(t('notFound'))}</p>` };
   } catch (err) {
     console.error(err);
-    view = { title: 'Error', html: `<p class="empty">Something went wrong: ${esc(err.message)}</p>` };
+    view = { title: t('title.error'), html: `<p class="empty">${esc(t('error', { msg: err.message }))}</p>` };
   }
-  titleEl.textContent = view.title || 'Travel';
+  titleEl.textContent = view.title || t('title.app');
   main.innerHTML = view.html;
   actions = view.actions || {};
   view.bind?.(main);
@@ -85,7 +112,7 @@ async function companiesById() {
 async function tripsById() {
   const list = await db.all('trips');
   list.sort((a, b) => (tripStart(b) || 0) - (tripStart(a) || 0));
-  return { list, byId: Object.fromEntries(list.map((t) => [t.id, t])) };
+  return { list, byId: Object.fromEntries(list.map((x) => [x.id, x])) };
 }
 
 function sortExpenses(list) {
@@ -98,22 +125,22 @@ function money(amount, currency) {
 
 function statusBadge(status) {
   const s = STATUSES.find((x) => x.id === status) || STATUSES[0];
-  return `<span class="badge status-${s.id}">${s.label}</span>`;
+  return `<span class="badge status-${s.id}">${esc(s.label)}</span>`;
 }
 
 function totalsByCurrency(expenses) {
-  const t = {};
-  for (const e of expenses) t[e.currency] = (t[e.currency] || 0) + (e.amount || 0);
-  return Object.entries(t).map(([c, a]) => money(a, c)).join(' + ') || '0';
+  const sums = {};
+  for (const e of expenses) sums[e.currency] = (sums[e.currency] || 0) + (e.amount || 0);
+  return Object.entries(sums).map(([c, a]) => money(a, c)).join(' + ') || '0';
 }
 
 function expenseRow(e, companies, trips) {
   const c = companies[e.companyId];
-  const t = trips?.[e.tripId];
+  const trip = trips?.[e.tripId];
   return `<a class="list-item" href="#/expense/${e.id}">
     <div class="li-main">
-      <div class="li-title">${esc(e.merchant || e.category || 'Expense')}${e.receiptIds?.length ? ' <span title="Has receipt">🧾</span>' : ''}</div>
-      <div class="li-sub">${esc(e.date)} · ${esc(e.category)}${c ? ` · ${esc(c.name)}` : ''}${t ? ` · ${esc(tripTitle(t))}` : ''}</div>
+      <div class="li-title">${esc(e.merchant || categoryLabel(e.category) || t('title.expense'))}${e.receiptIds?.length ? ` <span title="${esc(t('hasReceipt'))}">🧾</span>` : ''}</div>
+      <div class="li-sub">${esc(e.date)} · ${esc(categoryLabel(e.category))}${c ? ` · ${esc(c.name)}` : ''}${trip ? ` · ${esc(tripTitle(trip))}` : ''}</div>
     </div>
     <div class="li-end"><div class="amount">${money(e.amount, e.currency)}</div>${statusBadge(e.status)}</div>
   </a>`;
@@ -126,12 +153,12 @@ function copyRow(label, value, copyLabel) {
   </button>`;
 }
 
-const copyAction = (el) => copyText(el.dataset.value, `${el.dataset.label} copied`);
+const copyAction = (el) => copyText(el.dataset.value, t('copied', { what: el.dataset.label }));
 
 // ---------- trip actions: start / change transport / end ----------
 
 function transportGrid() {
-  return `<div class="transport-grid">${TRANSPORTS.map((t) => `<button class="transport-btn" data-transport="${t.id}"><span class="t-icon">${t.icon}</span><span>${esc(t.label)}</span></button>`).join('')}</div>`;
+  return `<div class="transport-grid">${TRANSPORTS.map((x) => `<button class="transport-btn" data-transport="${x.id}"><span class="t-icon">${x.icon}</span><span>${esc(x.label)}</span></button>`).join('')}</div>`;
 }
 
 // Saves GPS position and address into the given point once they arrive.
@@ -143,7 +170,7 @@ async function capturePosition(tripId, pointId, positionPromise) {
   if (pos.error) {
     point.positionError = pos.error;
     await db.put('trips', trip);
-    toast(`No position: ${pos.error}`);
+    toast(t('noPosition', { err: pos.error }));
     refreshIfShowing(tripId);
     return;
   }
@@ -172,13 +199,13 @@ async function startTrip() {
   const position = geo.getPosition();
   const { list: companies } = await companiesById();
   const lastCompany = await db.getSetting('lastCompanyId', '');
-  sheet('Start trip', `
-    <p class="muted">Departure ${isoTime(time)} recorded. Pick how you are travelling:</p>
+  sheet(t('startTrip'), `
+    <p class="muted">${esc(t('departureRecorded', { time: isoTime(time) }))}</p>
     ${transportGrid()}
-    <details class="more"><summary>Destination, purpose &amp; company (optional)</summary>
-      <label>Destination<input name="destination" placeholder="e.g. Stockholm, Customer X"></label>
-      <label>Purpose<input name="purpose" placeholder="e.g. Project meeting"></label>
-      <label>Bill to company<select name="companyId">${options(companies, lastCompany, { value: (c) => c.id, label: (c) => c.name, empty: '—' })}</select></label>
+    <details class="more"><summary>${esc(t('optionalDetails'))}</summary>
+      <label>${esc(t('destination'))}<input name="destination" placeholder="${esc(t('destinationPh'))}"></label>
+      <label>${esc(t('purpose'))}<input name="purpose" placeholder="${esc(t('purposePh'))}"></label>
+      <label>${esc(t('billTo'))}<select name="companyId">${options(companies, lastCompany, { value: (c) => c.id, label: (c) => c.name, empty: '—' })}</select></label>
     </details>`, (dlg, close) => {
     dlg.querySelectorAll('[data-transport]').forEach((btn) => {
       btn.onclick = async () => {
@@ -192,7 +219,7 @@ async function startTrip() {
         if (trip.companyId) await db.setSetting('lastCompanyId', trip.companyId);
         close();
         navigator.vibrate?.(40);
-        toast('Trip started');
+        toast(t('tripStarted'));
         render();
         capturePosition(trip.id, point.id, position);
       };
@@ -203,7 +230,7 @@ async function startTrip() {
 async function changeTransport(tripId) {
   const time = Date.now();
   const position = geo.getPosition();
-  sheet('Change transport', `<p class="muted">New leg from ${isoTime(time)}. Now travelling by:</p>${transportGrid()}`, (dlg, close) => {
+  sheet(t('changeTransport'), `<p class="muted">${esc(t('newLegFrom', { time: isoTime(time) }))}</p>${transportGrid()}`, (dlg, close) => {
     dlg.querySelectorAll('[data-transport]').forEach((btn) => {
       btn.onclick = async () => {
         const trip = await db.get('trips', tripId);
@@ -212,7 +239,7 @@ async function changeTransport(tripId) {
         await db.put('trips', trip);
         close();
         navigator.vibrate?.(40);
-        toast(`${transportById(point.transport).label} from ${isoTime(time)}`);
+        toast(t('legFrom', { transport: transportById(point.transport).label, time: isoTime(time) }));
         render();
         capturePosition(trip.id, point.id, position);
       };
@@ -222,7 +249,7 @@ async function changeTransport(tripId) {
 
 async function endTrip(tripId) {
   const time = Date.now();
-  if (!(await confirmSheet('End trip', `Record arrival at ${isoTime(time)} and your current position?`, 'End trip'))) return;
+  if (!(await confirmSheet(t('endTrip'), t('endTripConfirm', { time: isoTime(time) }), t('endTrip')))) return;
   const trip = await db.get('trips', tripId);
   const point = { id: uid(), time, transport: null };
   trip.points.push(point);
@@ -252,7 +279,7 @@ async function calculateCarDistances(tripId, { onlyMissing = false, quiet = fals
   }
   if (done) await db.put('trips', trip);
   if (!quiet || done) {
-    toast(done ? `Distance calculated for ${done} leg${done > 1 ? 's' : ''}` : failed ? 'Could not calculate distance (offline or missing position)' : 'No car legs to calculate');
+    toast(done ? t('distanceDone', { n: done }) : failed ? t('distanceFailed') : t('noCarLegs'));
   }
   if (done) refreshIfShowing(tripId);
 }
@@ -269,35 +296,35 @@ async function homeView() {
   if (trip) {
     const legs = tripLegs(trip);
     const current = legs[legs.length - 1];
-    const t = transportById(current?.transport);
+    const tr = transportById(current?.transport);
     const tripExpenses = expenses.filter((e) => e.tripId === trip.id);
     tripHtml = `
       <section class="card active-trip">
-        <div class="row between"><span class="badge live">● On trip</span><a href="#/trip/${trip.id}" class="link">Details ›</a></div>
+        <div class="row between"><span class="badge live">${esc(t('onTrip'))}</span><a href="#/trip/${trip.id}" class="link">${esc(t('details'))}</a></div>
         <h2>${esc(tripTitle(trip))}</h2>
-        <p class="muted">Left ${dateTime(tripStart(trip))} from ${esc(placeLabel(trip.points[0]))}</p>
-        <div class="big-stat"><span class="t-icon">${t.icon}</span><div><div class="stat-label">${esc(t.label)} since ${isoTime(current.from.time)}</div><div class="stat-value" id="elapsed">${formatDuration(Date.now() - tripStart(trip))}</div></div></div>
+        <p class="muted">${esc(t('leftFrom', { time: dateTime(tripStart(trip)), place: placeLabel(trip.points[0]) }))}</p>
+        <div class="big-stat"><span class="t-icon">${tr.icon}</span><div><div class="stat-label">${esc(t('since', { transport: tr.label, time: isoTime(current.from.time) }))}</div><div class="stat-value" id="elapsed">${formatDuration(Date.now() - tripStart(trip))}</div></div></div>
         <div class="grid2">
-          <a class="btn primary big" href="#/expense/new?trip=${trip.id}">＋ Expense</a>
-          <button class="btn big" data-action="change" data-id="${trip.id}">⇄ Change transport</button>
+          <a class="btn primary big" href="#/expense/new?trip=${trip.id}">${esc(t('addExpenseBtn'))}</a>
+          <button class="btn big" data-action="change" data-id="${trip.id}">${esc(t('changeTransportBtn'))}</button>
         </div>
-        <button class="btn danger block" data-action="end" data-id="${trip.id}">■ End trip</button>
-        ${tripExpenses.length ? `<p class="muted small">${tripExpenses.length} expense${tripExpenses.length > 1 ? 's' : ''} on this trip: ${totalsByCurrency(tripExpenses)}</p>` : ''}
+        <button class="btn danger block" data-action="end" data-id="${trip.id}">${esc(t('endTripBtn'))}</button>
+        ${tripExpenses.length ? `<p class="muted small">${t('tripExpenses', { n: tripExpenses.length, total: totalsByCurrency(tripExpenses) })}</p>` : ''}
       </section>`;
   } else {
     tripHtml = `
       <section class="start-wrap">
-        <button class="start-btn" data-action="start"><span>▶</span>Start trip</button>
-        <p class="muted center">Records time, place and transport in one tap.</p>
-        <a class="btn block" href="#/expense/new">＋ Add expense without trip</a>
+        <button class="start-btn" data-action="start"><span>▶</span>${esc(t('startTripBtn'))}</button>
+        <p class="muted center">${esc(t('startHint'))}</p>
+        <a class="btn block" href="#/expense/new">${esc(t('addWithoutTrip'))}</a>
       </section>`;
   }
   return {
-    title: 'Travel expenses',
+    title: t('title.app'),
     html: `${tripHtml}
       <section>
-        <div class="row between"><h3>To report (${todo.length})</h3>${todo.length ? `<a class="link" href="#/expenses?status=todo">All ›</a>` : ''}</div>
-        ${todo.length ? `<p class="muted small">${totalsByCurrency(todo)}</p><div class="list">${todo.slice(0, 8).map((e) => expenseRow(e, companies, trips)).join('')}</div>` : '<p class="empty">Nothing waiting to be reported 🎉</p>'}
+        <div class="row between"><h3>${esc(t('toReport', { n: todo.length }))}</h3>${todo.length ? `<a class="link" href="#/expenses?status=todo">${esc(t('all'))}</a>` : ''}</div>
+        ${todo.length ? `<p class="muted small">${totalsByCurrency(todo)}</p><div class="list">${todo.slice(0, 8).map((e) => expenseRow(e, companies, trips)).join('')}</div>` : `<p class="empty">${esc(t('nothingToReport'))}</p>`}
       </section>`,
     actions: {
       start: startTrip,
@@ -319,27 +346,27 @@ async function tripsView() {
   const { list } = await tripsById();
   const { byId: companies } = await companiesById();
   const expenses = await db.all('expenses');
-  const rows = list.map((t) => {
-    const ex = expenses.filter((e) => e.tripId === t.id);
+  const rows = list.map((trip) => {
+    const ex = expenses.filter((e) => e.tripId === trip.id);
     const todo = ex.filter((e) => e.status === 'todo').length;
-    const start = tripStart(t);
-    const end = tripEnd(t);
-    const icons = [...new Set(t.points.filter((p) => p.transport).map((p) => transportById(p.transport).icon))].join(' ');
-    return `<a class="list-item" href="#/trip/${t.id}">
-      <div class="li-main"><div class="li-title">${esc(tripTitle(t))} ${t.status === 'active' ? '<span class="badge live">● Active</span>' : ''}</div>
-      <div class="li-sub">${start ? isoDate(start) : ''}${end && isoDate(end) !== isoDate(start) ? ` – ${isoDate(end)}` : ''} · ${icons}${companies[t.companyId] ? ` · ${esc(companies[t.companyId].name)}` : ''}</div></div>
-      <div class="li-end">${ex.length ? `<div class="small">${ex.length} exp.</div>` : ''}${todo ? `<span class="badge status-todo">${todo} to report</span>` : ''}</div>
+    const start = tripStart(trip);
+    const end = tripEnd(trip);
+    const icons = [...new Set(trip.points.filter((p) => p.transport).map((p) => transportById(p.transport).icon))].join(' ');
+    return `<a class="list-item" href="#/trip/${trip.id}">
+      <div class="li-main"><div class="li-title">${esc(tripTitle(trip))} ${trip.status === 'active' ? `<span class="badge live">${esc(t('active'))}</span>` : ''}</div>
+      <div class="li-sub">${start ? isoDate(start) : ''}${end && isoDate(end) !== isoDate(start) ? ` – ${isoDate(end)}` : ''} · ${icons}${companies[trip.companyId] ? ` · ${esc(companies[trip.companyId].name)}` : ''}</div></div>
+      <div class="li-end">${ex.length ? `<div class="small">${esc(t('nExp', { n: ex.length }))}</div>` : ''}${todo ? `<span class="badge status-todo">${esc(t('nToReport', { n: todo }))}</span>` : ''}</div>
     </a>`;
   });
   return {
-    title: 'Trips',
-    html: list.length ? `<div class="list">${rows.join('')}</div>` : '<p class="empty">No trips yet. Start one from the home screen.</p>',
+    title: t('nav.trips'),
+    html: list.length ? `<div class="list">${rows.join('')}</div>` : `<p class="empty">${esc(t('noTrips'))}</p>`,
   };
 }
 
 async function tripView(id) {
   const trip = await db.get('trips', id);
-  if (!trip) return { title: 'Trip', html: '<p class="empty">Trip not found.</p>' };
+  if (!trip) return { title: t('title.trip'), html: `<p class="empty">${esc(t('tripNotFound'))}</p>` };
   const { list: companyList, byId: companies } = await companiesById();
   const company = companies[trip.companyId];
   const expenses = sortExpenses(await db.byIndex('expenses', 'tripId', id));
@@ -352,21 +379,21 @@ async function tripView(id) {
 
   const pointHtml = (p, i) => {
     const isEnd = trip.status === 'done' && i === trip.points.length - 1;
-    const label = i === 0 ? 'Departure' : isEnd ? 'Return' : 'Change';
+    const label = i === 0 ? t('departure') : isEnd ? t('return') : t('change');
     const leg = !isEnd ? legs.find((l) => l.index === i) : null;
     const isCar = ['car', 'company_car', 'rental'].includes(p.transport);
     return `<li class="tl-point">
-      <div class="tl-head"><strong>${label}</strong>
+      <div class="tl-head"><strong>${esc(label)}</strong>
         <input type="datetime-local" class="inline" value="${toLocalInput(p.time)}" data-point="${p.id}" data-field="time"></div>
       <div class="tl-place">
         <input class="inline wide" value="${esc(p.place || '')}" placeholder="${esc(placeLabel(p))}" data-point="${p.id}" data-field="place">
-        ${Number.isFinite(p.lat) ? `<a class="link small" href="${geo.mapUrl(p)}" target="_blank" rel="noopener">map</a>` : `<button class="link small" data-action="relocate" data-point="${p.id}">${p.positionError ? 'retry GPS' : 'locating…'}</button>`}
+        ${Number.isFinite(p.lat) ? `<a class="link small" href="${geo.mapUrl(p)}" target="_blank" rel="noopener">${esc(t('map'))}</a>` : `<button class="link small" data-action="relocate" data-point="${p.id}">${esc(p.positionError ? t('retryGps') : t('locating'))}</button>`}
       </div>
       ${leg ? `<div class="tl-leg">
         <select class="inline" data-point="${p.id}" data-field="transport">${options(TRANSPORTS, p.transport, { value: (x) => x.id, label: (x) => `${x.icon} ${x.label}` })}</select>
-        ${leg.to ? `<span class="muted small">${formatDuration(leg.to.time - p.time)}</span>` : `<span class="badge live">● now</span>`}
+        ${leg.to ? `<span class="muted small">${formatDuration(leg.to.time - p.time)}</span>` : `<span class="badge live">${esc(t('now'))}</span>`}
         ${isCar && leg.to ? `<span class="km"><input class="inline num" inputmode="decimal" value="${Number.isFinite(p.distanceKm) ? String(p.distanceKm).replace('.', ',') : ''}" placeholder="km" data-point="${p.id}" data-field="distanceKm"> km
-          <button class="link small" data-action="roadkm" data-index="${i}">by road</button></span>` : ''}
+          <button class="link small" data-action="roadkm" data-index="${i}">${esc(t('byRoad'))}</button></span>` : ''}
       </div>` : ''}
     </li>`;
   };
@@ -374,65 +401,65 @@ async function tripView(id) {
   return {
     title: tripTitle(trip),
     html: `
-      ${trip.status === 'active' ? `<div class="grid2"><button class="btn" data-action="change">⇄ Change transport</button><button class="btn danger" data-action="end">■ End trip</button></div>` : ''}
+      ${trip.status === 'active' ? `<div class="grid2"><button class="btn" data-action="change">${esc(t('changeTransportBtn'))}</button><button class="btn danger" data-action="end">${esc(t('endTripBtn'))}</button></div>` : ''}
       <section class="card">
-        <label>Destination<input name="destination" value="${esc(trip.destination || '')}" placeholder="e.g. Stockholm"></label>
-        <label>Purpose<input name="purpose" value="${esc(trip.purpose || '')}" placeholder="e.g. Customer meeting"></label>
-        <label>Bill to company<select name="companyId">${options(companyList, trip.companyId, { value: (c) => c.id, label: (c) => c.name, empty: '—' })}</select></label>
-        <label>Notes<textarea name="notes" rows="2">${esc(trip.notes || '')}</textarea></label>
+        <label>${esc(t('destination'))}<input name="destination" value="${esc(trip.destination || '')}" placeholder="${esc(t('destinationPh'))}"></label>
+        <label>${esc(t('purpose'))}<input name="purpose" value="${esc(trip.purpose || '')}" placeholder="${esc(t('purposePh'))}"></label>
+        <label>${esc(t('billTo'))}<select name="companyId">${options(companyList, trip.companyId, { value: (c) => c.id, label: (c) => c.name, empty: '—' })}</select></label>
+        <label>${esc(t('notes'))}<textarea name="notes" rows="2">${esc(trip.notes || '')}</textarea></label>
       </section>
       <section>
-        <h3>Timeline</h3>
+        <h3>${esc(t('timeline'))}</h3>
         <ol class="timeline">${trip.points.map(pointHtml).join('')}</ol>
-        <p class="muted small">Duration ${formatDuration((end || Date.now()) - start)}${km ? ` · Own car ${formatKm(km)} km` : ''}</p>
+        <p class="muted small">${esc(t('durationLine', { duration: formatDuration((end || Date.now()) - start) }))}${km ? ` · ${esc(t('ownCarKmLine', { km: formatKm(km) }))}` : ''}</p>
       </section>
       <section>
-        <div class="row between"><h3>Copy</h3><button class="btn small primary" data-action="copytrip">Copy summary</button></div>
+        <div class="row between"><h3>${esc(t('copy'))}</h3><button class="btn small primary" data-action="copytrip">${esc(t('copySummary'))}</button></div>
         <div class="copy-list">
-          ${copyRow('Departure date', values.start_date)}
-          ${copyRow('Departure time', values.start_time)}
-          ${copyRow('From', values.start_place)}
-          ${copyRow('Return date', values.end_date)}
-          ${copyRow('Return time', values.end_time)}
-          ${copyRow('Back at', values.end_place)}
-          ${copyRow('Destination', values.destination)}
-          ${copyRow('Purpose', values.purpose)}
-          ${copyRow('Transport', values.transport)}
-          ${copyRow('Own car km', values.car_km)}
+          ${copyRow(t('departureDate'), values.start_date)}
+          ${copyRow(t('departureTime'), values.start_time)}
+          ${copyRow(t('from'), values.start_place)}
+          ${copyRow(t('returnDate'), values.end_date)}
+          ${copyRow(t('returnTime'), values.end_time)}
+          ${copyRow(t('backAt'), values.end_place)}
+          ${copyRow(t('destination'), values.destination)}
+          ${copyRow(t('purpose'), values.purpose)}
+          ${copyRow(t('transport'), values.transport)}
+          ${copyRow(t('ownCarKm'), values.car_km)}
         </div>
       </section>
       <section>
-        <div class="row between"><h3>Expenses (${expenses.length})</h3><a class="btn small primary" href="#/expense/new?trip=${trip.id}">＋ Add</a></div>
-        ${expenses.length ? `<p class="muted small">${totalsByCurrency(expenses)}</p><div class="list">${expenses.map((e) => expenseRow(e, companies)).join('')}</div>` : '<p class="empty">No expenses on this trip yet.</p>'}
-        ${km && trip.status === 'done' && !expenses.some((e) => e.category === 'Mileage') ? `<button class="btn block" data-action="mileage">🚗 Add mileage expense (${formatKm(km)} km × ${formatAmount(mileageRate)} SEK/mil)</button>` : ''}
+        <div class="row between"><h3>${esc(t('expensesN', { n: expenses.length }))}</h3><a class="btn small primary" href="#/expense/new?trip=${trip.id}">${esc(t('add'))}</a></div>
+        ${expenses.length ? `<p class="muted small">${totalsByCurrency(expenses)}</p><div class="list">${expenses.map((e) => expenseRow(e, companies)).join('')}</div>` : `<p class="empty">${esc(t('noTripExpenses'))}</p>`}
+        ${km && trip.status === 'done' && !expenses.some((e) => e.category === 'Mileage') ? `<button class="btn block" data-action="mileage">${esc(t('addMileage', { km: formatKm(km), rate: formatAmount(mileageRate) }))}</button>` : ''}
       </section>
-      <button class="btn danger block subtle" data-action="delete">Delete trip</button>`,
+      <button class="btn danger block subtle" data-action="delete">${esc(t('deleteTrip'))}</button>`,
     actions: {
       copy: copyAction,
       change: () => changeTransport(trip.id),
       end: () => endTrip(trip.id),
       roadkm: (el) => calculateCarDistances(trip.id, { legIndex: Number(el.dataset.index) }),
       relocate: async (el) => {
-        toast('Getting position…');
-        const t = await db.get('trips', trip.id);
-        const p = t.points.find((x) => x.id === el.dataset.point);
+        toast(t('gettingPosition'));
+        const fresh = await db.get('trips', trip.id);
+        const p = fresh.points.find((x) => x.id === el.dataset.point);
         p.positionError = undefined;
-        await db.put('trips', t);
+        await db.put('trips', fresh);
         await capturePosition(trip.id, p.id, geo.getPosition());
       },
-      copytrip: () => copyText(renderTemplate(company?.tripTemplate || DEFAULT_TRIP_TEMPLATE, values), 'Trip summary copied'),
+      copytrip: () => copyText(renderTemplate(company?.tripTemplate || defaultTripTemplate(), values), t('tripSummaryCopied')),
       mileage: async () => {
         const e = {
           id: uid(), tripId: trip.id, companyId: trip.companyId || '', date: isoDate(start), createdAt: Date.now(),
           amount: Math.round((km / 10) * mileageRate * 100) / 100, currency: 'SEK', category: 'Mileage',
-          merchant: '', description: `Own car ${formatKm(km)} km (${formatAmount(km / 10)} mil × ${formatAmount(mileageRate)} SEK)`,
+          merchant: '', description: t('mileageDesc', { km: formatKm(km), mil: formatAmount(km / 10), rate: formatAmount(mileageRate) }),
           status: 'todo', receiptIds: [],
         };
         await db.put('expenses', e);
         go(`#/expense/${e.id}`);
       },
       delete: async () => {
-        if (!(await confirmSheet('Delete trip', 'The trip is deleted. Its expenses are kept but no longer linked to a trip.', 'Delete', true))) return;
+        if (!(await confirmSheet(t('deleteTrip'), t('deleteTripText'), t('delete'), true))) return;
         for (const e of expenses) await db.put('expenses', { ...e, tripId: '' });
         await db.remove('trips', trip.id);
         go('#/trips');
@@ -441,22 +468,22 @@ async function tripView(id) {
     bind(root) {
       root.querySelectorAll('.card [name]').forEach((input) => {
         input.addEventListener('change', async () => {
-          const t = await db.get('trips', trip.id);
-          t[input.name] = input.value.trim();
-          await db.put('trips', t);
+          const fresh = await db.get('trips', trip.id);
+          fresh[input.name] = input.value.trim();
+          await db.put('trips', fresh);
           if (input.name === 'companyId') {
-            if (t.companyId) await db.setSetting('lastCompanyId', t.companyId);
+            if (fresh.companyId) await db.setSetting('lastCompanyId', fresh.companyId);
             render();
           } else {
-            titleEl.textContent = tripTitle(t);
+            titleEl.textContent = tripTitle(fresh);
           }
         });
       });
       root.querySelectorAll('[data-point]').forEach((input) => {
         if (input.tagName === 'BUTTON') return;
         input.addEventListener('change', async () => {
-          const t = await db.get('trips', trip.id);
-          const p = t.points.find((x) => x.id === input.dataset.point);
+          const fresh = await db.get('trips', trip.id);
+          const p = fresh.points.find((x) => x.id === input.dataset.point);
           const f = input.dataset.field;
           if (f === 'time') {
             const d = new Date(input.value).getTime();
@@ -468,7 +495,7 @@ async function tripView(id) {
           } else {
             p[f] = input.value.trim();
           }
-          await db.put('trips', t);
+          await db.put('trips', fresh);
           render();
         });
       });
@@ -486,16 +513,16 @@ async function expensesView(query) {
   if (companyId) list = list.filter((e) => (companyId === 'none' ? !e.companyId : e.companyId === companyId));
   const link = (s, c) => `#/expenses?status=${s}&company=${c}`;
   return {
-    title: 'Expenses',
+    title: t('nav.expenses'),
     html: `
-      <div class="chips">${[{ id: '', label: 'All' }, ...STATUSES].map((s) => `<a class="chip${s.id === status ? ' on' : ''}" href="${link(s.id, companyId)}">${s.label}</a>`).join('')}</div>
-      <select id="company-filter">${options([{ id: '', name: 'All companies' }, ...companyList, { id: 'none', name: 'No company' }], companyId, { value: (c) => c.id, label: (c) => c.name })}</select>
-      <div class="row between"><p class="muted small">${list.length} expense${list.length === 1 ? '' : 's'} · ${totalsByCurrency(list)}</p><a class="btn small primary" href="#/expense/new">＋ Add</a></div>
-      ${list.length ? `<div class="list">${list.map((e) => expenseRow(e, companies, trips)).join('')}</div>` : '<p class="empty">No expenses here.</p>'}
+      <div class="chips">${[{ id: '', label: t('allFilter') }, ...STATUSES].map((s) => `<a class="chip${s.id === status ? ' on' : ''}" href="${link(s.id, companyId)}">${esc(s.label)}</a>`).join('')}</div>
+      <select id="company-filter">${options([{ id: '', name: t('allCompanies') }, ...companyList, { id: 'none', name: t('noCompany') }], companyId, { value: (c) => c.id, label: (c) => c.name })}</select>
+      <div class="row between"><p class="muted small">${esc(t('nExpenses', { n: list.length }))} · ${totalsByCurrency(list)}</p><a class="btn small primary" href="#/expense/new">${esc(t('add'))}</a></div>
+      ${list.length ? `<div class="list">${list.map((e) => expenseRow(e, companies, trips)).join('')}</div>` : `<p class="empty">${esc(t('noExpensesHere'))}</p>`}
       ${list.length ? `<div class="bulk">
-        <button class="btn" data-action="csv">⬇ Export CSV</button>
-        <button class="btn" data-action="receipts">🧾 Share receipts</button>
-        ${status === 'todo' ? '<button class="btn" data-action="markall">✓ Mark all reported</button>' : ''}
+        <button class="btn" data-action="csv">${esc(t('exportCsv'))}</button>
+        <button class="btn" data-action="receipts">${esc(t('shareReceipts'))}</button>
+        ${status === 'todo' ? `<button class="btn" data-action="markall">${esc(t('markAllReported'))}</button>` : ''}
       </div>` : ''}`,
     actions: {
       csv: async () => {
@@ -509,11 +536,11 @@ async function expensesView(query) {
           const r = await db.get('receipts', rid);
           if (r) recs.push(r);
         }
-        if (!recs.length) return toast('No receipts in this list');
-        try { await shareReceipts(recs, 'Receipts'); } catch { /* share cancelled */ }
+        if (!recs.length) return toast(t('noReceiptsInList'));
+        try { await shareReceipts(recs, t('receipt', { n: recs.length })); } catch { /* share cancelled */ }
       },
       markall: async () => {
-        if (!(await confirmSheet('Mark as reported', `Mark ${list.length} expenses as reported?`, 'Mark reported'))) return;
+        if (!(await confirmSheet(t('markReportedTitle'), t('markReportedText', { n: list.length }), t('markReportedBtn')))) return;
         for (const e of list) await db.put('expenses', { ...e, status: 'reported' });
         render();
       },
@@ -526,8 +553,8 @@ async function expensesView(query) {
 
 async function expenseFormView(id, query) {
   const existing = id ? await db.get('expenses', id) : null;
-  if (id && !existing) return { title: 'Expense', html: '<p class="empty">Expense not found.</p>' };
-  const { list: companyList, byId: companies } = await companiesById();
+  if (id && !existing) return { title: t('title.expense'), html: `<p class="empty">${esc(t('expenseNotFound'))}</p>` };
+  const { list: companyList } = await companiesById();
   const { list: tripList, byId: trips } = await tripsById();
   const active = await db.activeTrip();
   const tripId = existing ? existing.tripId : query.get('trip') ?? active?.id ?? '';
@@ -544,37 +571,37 @@ async function expenseFormView(id, query) {
   }
   const newReceipts = [];
   const removed = new Set();
-  const thumb = (r) => `<div class="thumb" data-rid="${r.id}">${r.type.startsWith('image/') ? `<img src="${objectUrl(r.blob)}" alt="">` : `<span class="pdf">PDF</span>`}<button type="button" class="thumb-x" data-remove="${r.id}" aria-label="Remove">✕</button></div>`;
+  const thumb = (r) => `<div class="thumb" data-rid="${r.id}">${r.type.startsWith('image/') ? `<img src="${objectUrl(r.blob)}" alt="">` : `<span class="pdf">PDF</span>`}<button type="button" class="thumb-x" data-remove="${r.id}" aria-label="${esc(t('remove'))}">✕</button></div>`;
 
   return {
-    title: existing ? 'Edit expense' : 'New expense',
+    title: existing ? t('editExpense') : t('newExpense'),
     html: `
       <form id="expense-form" class="card" autocomplete="off">
         <div class="receipt-btns">
-          <label class="btn primary">📷 Photo<input type="file" accept="image/*" capture="environment" hidden data-add></label>
-          <label class="btn">📎 File<input type="file" accept="image/*,application/pdf" multiple hidden data-add></label>
+          <label class="btn primary">${esc(t('photo'))}<input type="file" accept="image/*" capture="environment" hidden data-add></label>
+          <label class="btn">${esc(t('file'))}<input type="file" accept="image/*,application/pdf" multiple hidden data-add></label>
         </div>
         <div class="thumbs" id="thumbs">${receipts.map(thumb).join('')}</div>
         <div class="grid2">
-          <label>Amount<input name="amount" inputmode="decimal" required value="${Number.isFinite(e.amount) ? formatAmount(e.amount) : ''}" placeholder="0,00"></label>
-          <label>Currency<input name="currency" list="currencies" value="${esc(e.currency)}" maxlength="3" required></label>
+          <label>${esc(t('amount'))}<input name="amount" inputmode="decimal" required value="${Number.isFinite(e.amount) ? formatAmount(e.amount) : ''}" placeholder="0,00"></label>
+          <label>${esc(t('currency'))}<input name="currency" list="currencies" value="${esc(e.currency)}" maxlength="3" required></label>
         </div>
         <datalist id="currencies">${CURRENCIES.map((c) => `<option value="${c}">`).join('')}</datalist>
         <div class="grid2">
-          <label>Date<input name="date" type="date" required value="${esc(e.date)}"></label>
-          <label>Category<select name="category" required>${options(CATEGORIES, e.category, { empty: 'Choose…' })}</select></label>
+          <label>${esc(t('date'))}<input name="date" type="date" required value="${esc(e.date)}"></label>
+          <label>${esc(t('category'))}<select name="category" required>${options(CATEGORIES, e.category, { label: categoryLabel, empty: t('choose') })}</select></label>
         </div>
-        <label>Merchant<input name="merchant" value="${esc(e.merchant || '')}" placeholder="e.g. Scandic, SJ, Taxi Göteborg"></label>
-        <label>Description<input name="description" value="${esc(e.description || '')}" placeholder="e.g. Dinner with customer"></label>
+        <label>${esc(t('merchant'))}<input name="merchant" value="${esc(e.merchant || '')}" placeholder="${esc(t('merchantPh'))}"></label>
+        <label>${esc(t('description'))}<input name="description" value="${esc(e.description || '')}" placeholder="${esc(t('descriptionPh'))}"></label>
         <div class="grid2">
-          <label>VAT (optional)<input name="vat" inputmode="decimal" value="${Number.isFinite(e.vat) ? formatAmount(e.vat) : ''}"></label>
-          <label>Paid with<select name="payment">${options(['Private card', 'Company card', 'Cash', 'Invoice'], e.payment, { empty: '—' })}</select></label>
+          <label>${esc(t('vatOptional'))}<input name="vat" inputmode="decimal" value="${Number.isFinite(e.vat) ? formatAmount(e.vat) : ''}"></label>
+          <label>${esc(t('paidWith'))}<select name="payment">${options(PAYMENTS, e.payment, { label: paymentLabel, empty: '—' })}</select></label>
         </div>
-        <label>Company<select name="companyId">${options(companyList, e.companyId, { value: (c) => c.id, label: (c) => c.name, empty: '—' })}</select></label>
-        ${!companyList.length ? '<p class="muted small">Add companies under Settings to get per-company copy templates.</p>' : ''}
-        <label>Trip<select name="tripId">${options(tripList.slice(0, 30), e.tripId, { value: (t) => t.id, label: (t) => `${tripStart(t) ? isoDate(tripStart(t)) : ''} ${tripTitle(t)}`, empty: 'No trip' })}</select></label>
-        <label>Status<select name="status">${options(STATUSES, e.status, { value: (s) => s.id, label: (s) => s.label })}</select></label>
-        <div class="grid2"><a class="btn" href="${existing ? `#/expense/${e.id}` : 'javascript:history.back()'}">Cancel</a><button class="btn primary" type="submit">Save</button></div>
+        <label>${esc(t('company'))}<select name="companyId">${options(companyList, e.companyId, { value: (c) => c.id, label: (c) => c.name, empty: '—' })}</select></label>
+        ${!companyList.length ? `<p class="muted small">${esc(t('addCompaniesHint'))}</p>` : ''}
+        <label>${esc(t('trip'))}<select name="tripId">${options(tripList.slice(0, 30), e.tripId, { value: (x) => x.id, label: (x) => (x.title || x.destination) && tripStart(x) ? `${isoDate(tripStart(x))} ${tripTitle(x)}` : tripTitle(x), empty: t('noTrip') })}</select></label>
+        <label>${esc(t('status'))}<select name="status">${options(STATUSES, e.status, { value: (s) => s.id, label: (s) => s.label })}</select></label>
+        <div class="grid2"><a class="btn" href="${existing ? `#/expense/${e.id}` : 'javascript:history.back()'}">${esc(t('cancel'))}</a><button class="btn primary" type="submit">${esc(t('save'))}</button></div>
       </form>`,
     bind(root) {
       const form = root.querySelector('#expense-form');
@@ -596,14 +623,14 @@ async function expenseFormView(id, query) {
         thumbs.querySelector(`[data-rid="${rid}"]`).remove();
       };
       form.tripId.onchange = () => {
-        const t = trips[form.tripId.value];
-        if (t?.companyId && !form.companyId.value) form.companyId.value = t.companyId;
+        const x = trips[form.tripId.value];
+        if (x?.companyId && !form.companyId.value) form.companyId.value = x.companyId;
       };
       form.onsubmit = async (ev) => {
         ev.preventDefault();
         const fd = Object.fromEntries(new FormData(form));
         const amount = parseAmount(fd.amount);
-        if (!Number.isFinite(amount)) return toast('Enter a valid amount');
+        if (!Number.isFinite(amount)) return toast(t('invalidAmount'));
         const vat = parseAmount(fd.vat);
         const receiptIds = [...(e.receiptIds || []), ...newReceipts.map((r) => r.id)].filter((rid) => !removed.has(rid));
         for (const rid of removed) await db.remove('receipts', rid);
@@ -616,7 +643,7 @@ async function expenseFormView(id, query) {
         await db.setSetting('lastCurrency', saved.currency);
         if (saved.companyId) await db.setSetting('lastCompanyId', saved.companyId);
         if (saved.payment) await db.setSetting('lastPayment', saved.payment);
-        toast('Saved');
+        toast(t('saved'));
         if (existing) go(`#/expense/${saved.id}`);
         else location.replace(`#/expense/${saved.id}`);
       };
@@ -627,7 +654,7 @@ async function expenseFormView(id, query) {
 
 async function expenseView(id) {
   const e = await db.get('expenses', id);
-  if (!e) return { title: 'Expense', html: '<p class="empty">Expense not found.</p>' };
+  if (!e) return { title: t('title.expense'), html: `<p class="empty">${esc(t('expenseNotFound'))}</p>` };
   const { byId: companies } = await companiesById();
   const company = companies[e.companyId];
   const trip = await db.get('trips', e.tripId);
@@ -640,48 +667,48 @@ async function expenseView(id) {
   // "Next" walks through the remaining expenses to report for the same company.
   const queue = sortExpenses(await db.all('expenses')).filter((x) => x.status === 'todo' && x.companyId === e.companyId && x.id !== e.id);
   return {
-    title: e.merchant || e.category || 'Expense',
+    title: e.merchant || categoryLabel(e.category) || t('title.expense'),
     html: `
       <section class="card center">
         <div class="hero-amount">${money(e.amount, e.currency)}</div>
-        <div class="muted">${esc(e.date)} · ${esc(e.category)}${company ? ` · ${esc(company.name)}` : ''}</div>
-        <div class="seg" role="group" aria-label="Status">${STATUSES.map((s) => `<button class="${s.id === e.status ? 'on' : ''}" data-action="status" data-status="${s.id}">${s.label}</button>`).join('')}</div>
+        <div class="muted">${esc(e.date)} · ${esc(categoryLabel(e.category))}${company ? ` · ${esc(company.name)}` : ''}</div>
+        <div class="seg" role="group" aria-label="${esc(t('status'))}">${STATUSES.map((s) => `<button class="${s.id === e.status ? 'on' : ''}" data-action="status" data-status="${s.id}">${esc(s.label)}</button>`).join('')}</div>
       </section>
-      <button class="btn primary block" data-action="copyall">⧉ Copy all${company ? ` (${esc(company.name)} format)` : ''}</button>
-      <p class="muted small center">Tap a row to copy that field</p>
+      <button class="btn primary block" data-action="copyall">${esc(company ? t('copyAllFormat', { company: company.name }) : t('copyAll'))}</button>
+      <p class="muted small center">${esc(t('tapToCopy'))}</p>
       <div class="copy-list">
-        ${copyRow('Date', v.date)}
-        ${copyRow('Amount', v.amount)}
-        ${copyRow('Currency', v.currency)}
-        ${copyRow(company?.categoryMap?.[e.category] ? `Category (${company.name})` : 'Category', v.category, 'Category')}
-        ${copyRow('Merchant', v.merchant)}
-        ${copyRow('Description', v.description)}
-        ${copyRow('VAT', v.vat)}
-        ${copyRow('Paid with', v.payment)}
-        ${trip ? copyRow('Trip', v.trip) : ''}
-        ${trip ? copyRow('Purpose', v.purpose) : ''}
+        ${copyRow(t('date'), v.date)}
+        ${copyRow(t('amount'), v.amount)}
+        ${copyRow(t('currency'), v.currency)}
+        ${copyRow(company?.categoryMap?.[e.category] ? t('categoryFor', { company: company.name }) : t('category'), v.category, t('category'))}
+        ${copyRow(t('merchant'), v.merchant)}
+        ${copyRow(t('description'), v.description)}
+        ${copyRow(t('vat'), v.vat)}
+        ${copyRow(t('paidWith'), v.payment)}
+        ${trip ? copyRow(t('trip'), v.trip) : ''}
+        ${trip ? copyRow(t('purpose'), v.purpose) : ''}
       </div>
-      ${receipts.length ? `<section><div class="row between"><h3>Receipt${receipts.length > 1 ? 's' : ''}</h3><button class="btn small primary" data-action="share">Share ↗</button></div>
+      ${receipts.length ? `<section><div class="row between"><h3>${esc(t('receipt', { n: receipts.length }))}</h3><button class="btn small primary" data-action="share">${esc(t('share'))}</button></div>
         <div class="thumbs large">${receipts.map((r) => r.type.startsWith('image/')
-          ? `<a href="${objectUrl(r.blob)}" target="_blank" class="thumb"><img src="${objectUrl(r.blob)}" alt="Receipt"></a>`
+          ? `<a href="${objectUrl(r.blob)}" target="_blank" class="thumb"><img src="${objectUrl(r.blob)}" alt="${esc(t('receipt', { n: 1 }))}"></a>`
           : `<a href="${objectUrl(r.blob)}" target="_blank" class="thumb"><span class="pdf">PDF</span></a>`).join('')}</div>
-        <button class="link small" data-action="save">Save receipt to device</button></section>` : '<p class="muted small center">No receipt attached.</p>'}
-      ${trip ? `<p class="center"><a class="link" href="#/trip/${trip.id}">Trip: ${esc(tripTitle(trip))} ›</a></p>` : ''}
-      <div class="grid2"><a class="btn" href="#/expense/${e.id}/edit">✎ Edit</a><button class="btn danger" data-action="delete">Delete</button></div>
-      ${queue.length ? `<a class="btn block" href="#/expense/${queue[0].id}">Next to report (${queue.length} left) ›</a>` : ''}`,
+        <button class="link small" data-action="save">${esc(t('saveReceipt'))}</button></section>` : `<p class="muted small center">${esc(t('noReceipt'))}</p>`}
+      ${trip ? `<p class="center"><a class="link" href="#/trip/${trip.id}">${esc(t('tripLink', { trip: tripTitle(trip) }))}</a></p>` : ''}
+      <div class="grid2"><a class="btn" href="#/expense/${e.id}/edit">${esc(t('edit'))}</a><button class="btn danger" data-action="delete">${esc(t('delete'))}</button></div>
+      ${queue.length ? `<a class="btn block" href="#/expense/${queue[0].id}">${esc(t('nextToReport', { n: queue.length }))}</a>` : ''}`,
     actions: {
       copy: copyAction,
-      copyall: () => copyText(renderTemplate(company?.expenseTemplate || DEFAULT_EXPENSE_TEMPLATE, v), 'Expense copied'),
+      copyall: () => copyText(renderTemplate(company?.expenseTemplate || DEFAULT_EXPENSE_TEMPLATE, v), t('expenseCopied')),
       status: async (el) => {
         await db.put('expenses', { ...e, status: el.dataset.status, updatedAt: Date.now() });
         render();
       },
       share: async () => {
-        try { await shareReceipts(receipts, e.merchant || 'Receipt'); } catch { /* share cancelled */ }
+        try { await shareReceipts(receipts, e.merchant || t('receipt', { n: 1 })); } catch { /* share cancelled */ }
       },
       save: () => receipts.forEach((r) => download(r.blob, `${e.date}_${(e.merchant || e.category || 'receipt').replace(/\W+/g, '_')}.${r.name.split('.').pop()}`)),
       delete: async () => {
-        if (!(await confirmSheet('Delete expense', 'Delete this expense and its receipts?', 'Delete', true))) return;
+        if (!(await confirmSheet(t('deleteExpense'), t('deleteExpenseText'), t('delete'), true))) return;
         await db.deleteExpense(e);
         history.back();
       },
@@ -692,43 +719,43 @@ async function expenseView(id) {
 async function companiesView() {
   const { list } = await companiesById();
   return {
-    title: 'Companies',
+    title: t('companies'),
     html: `
-      <p class="muted">Each company you bill can have its own copy format and names for categories.</p>
-      ${list.length ? `<div class="list">${list.map((c) => `<a class="list-item" href="#/company/${c.id}"><div class="li-main"><div class="li-title">${esc(c.name)}</div><div class="li-sub">${esc(c.system || '')}</div></div><div class="li-end">›</div></a>`).join('')}</div>` : '<p class="empty">No companies yet.</p>'}
-      <a class="btn primary block" href="#/company/new">＋ Add company</a>`,
+      <p class="muted">${esc(t('companiesIntro'))}</p>
+      ${list.length ? `<div class="list">${list.map((c) => `<a class="list-item" href="#/company/${c.id}"><div class="li-main"><div class="li-title">${esc(c.name)}</div><div class="li-sub">${esc(c.system || '')}</div></div><div class="li-end">›</div></a>`).join('')}</div>` : `<p class="empty">${esc(t('noCompanies'))}</p>`}
+      <a class="btn primary block" href="#/company/new">${esc(t('addCompany'))}</a>`,
   };
 }
 
 async function companyView(id) {
   const isNew = id === 'new';
-  const c = isNew ? { id: uid(), name: '', system: '', expenseTemplate: DEFAULT_EXPENSE_TEMPLATE, tripTemplate: DEFAULT_TRIP_TEMPLATE, decimalSep: ',', csvSep: ';', categoryMap: {} } : await db.get('companies', id);
-  if (!c) return { title: 'Company', html: '<p class="empty">Company not found.</p>' };
+  const c = isNew ? { id: uid(), name: '', system: '', expenseTemplate: DEFAULT_EXPENSE_TEMPLATE, tripTemplate: defaultTripTemplate(), decimalSep: ',', csvSep: ';', categoryMap: {} } : await db.get('companies', id);
+  if (!c) return { title: t('title.company'), html: `<p class="empty">${esc(t('companyNotFound'))}</p>` };
   const chips = (list, target) => list.map((p) => `<button type="button" class="chip" data-insert="{${p}}" data-target="${target}">{${p}}</button>`).join('');
   return {
-    title: isNew ? 'New company' : c.name,
+    title: isNew ? t('newCompany') : c.name,
     html: `
       <form id="company-form" class="card">
-        <label>Name<input name="name" required value="${esc(c.name)}" placeholder="e.g. Altegra"></label>
-        <label>Expense system (note)<input name="system" value="${esc(c.system || '')}" placeholder="e.g. Concur, Visma, Medius"></label>
-        <label>Expense copy format<textarea name="expenseTemplate" rows="3" class="mono">${esc(c.expenseTemplate)}</textarea></label>
+        <label>${esc(t('name'))}<input name="name" required value="${esc(c.name)}" placeholder="${esc(t('namePh'))}"></label>
+        <label>${esc(t('system'))}<input name="system" value="${esc(c.system || '')}" placeholder="${esc(t('systemPh'))}"></label>
+        <label>${esc(t('expenseFormat'))}<textarea name="expenseTemplate" rows="3" class="mono">${esc(c.expenseTemplate)}</textarea></label>
         <div class="chips small">${chips(EXPENSE_PLACEHOLDERS, 'expenseTemplate')}</div>
-        <label>Trip copy format<textarea name="tripTemplate" rows="5" class="mono">${esc(c.tripTemplate)}</textarea></label>
+        <label>${esc(t('tripFormat'))}<textarea name="tripTemplate" rows="5" class="mono">${esc(c.tripTemplate)}</textarea></label>
         <div class="chips small">${chips(TRIP_PLACEHOLDERS, 'tripTemplate')}</div>
-        <p class="muted small">Write <code>\\t</code> for tab (jumps to the next cell when pasting into a table) and <code>\\n</code> for a new line.</p>
+        <p class="muted small">${t('templateHelp')}</p>
         <div class="grid2">
-          <label>Decimal separator<select name="decimalSep">${options([',', '.'], c.decimalSep, { label: (x) => (x === ',' ? 'Comma 12,50' : 'Point 12.50') })}</select></label>
-          <label>CSV separator<select name="csvSep">${options([';', ',', '\t'], c.csvSep, { label: (x) => ({ ';': 'Semicolon', ',': 'Comma', '\t': 'Tab' })[x] })}</select></label>
+          <label>${esc(t('decimalSep'))}<select name="decimalSep">${options([',', '.'], c.decimalSep, { label: (x) => (x === ',' ? t('comma') : t('point')) })}</select></label>
+          <label>${esc(t('csvSep'))}<select name="csvSep">${options([';', ',', '\t'], c.csvSep, { label: (x) => ({ ';': t('semicolon'), ',': t('commaSep'), '\t': t('tab') })[x] })}</select></label>
         </div>
-        <h3>Category names in this company's system</h3>
-        <p class="muted small">Leave empty to use your own name.</p>
-        <div class="map-grid">${CATEGORIES.map((cat) => `<span>${esc(cat)}</span><input data-cat="${esc(cat)}" value="${esc(c.categoryMap?.[cat] || '')}" placeholder="${esc(cat)}">`).join('')}</div>
-        <button class="btn primary block" type="submit">Save</button>
+        <h3>${esc(t('categoryNames'))}</h3>
+        <p class="muted small">${esc(t('categoryNamesHint'))}</p>
+        <div class="map-grid">${CATEGORIES.map((cat) => `<span>${esc(categoryLabel(cat))}</span><input data-cat="${esc(cat)}" value="${esc(c.categoryMap?.[cat] || '')}" placeholder="${esc(categoryLabel(cat))}">`).join('')}</div>
+        <button class="btn primary block" type="submit">${esc(t('save'))}</button>
       </form>
-      ${isNew ? '' : '<button class="btn danger block subtle" data-action="delete">Delete company</button>'}`,
+      ${isNew ? '' : `<button class="btn danger block subtle" data-action="delete">${esc(t('deleteCompany'))}</button>`}`,
     actions: {
       delete: async () => {
-        if (!(await confirmSheet('Delete company', `Delete ${c.name}? Expenses keep their data but lose the company link.`, 'Delete', true))) return;
+        if (!(await confirmSheet(t('deleteCompany'), t('deleteCompanyText', { name: c.name }), t('delete'), true))) return;
         await db.remove('companies', c.id);
         go('#/companies');
       },
@@ -750,7 +777,7 @@ async function companyView(id) {
         const categoryMap = {};
         form.querySelectorAll('[data-cat]').forEach((i) => { if (i.value.trim()) categoryMap[i.dataset.cat] = i.value.trim(); });
         await db.put('companies', { ...c, ...fd, name: fd.name.trim(), categoryMap });
-        toast('Saved');
+        toast(t('saved'));
         go('#/companies');
       };
     },
@@ -765,25 +792,28 @@ async function settingsView() {
   for (const s of ['trips', 'expenses', 'receipts']) counts[s] = (await db.all(s)).length;
   const lastBackup = await db.getSetting('lastBackup', null);
   return {
-    title: 'Settings',
+    title: t('nav.settings'),
     html: `
-      <a class="list-item card" href="#/companies"><div class="li-main"><div class="li-title">🏢 Companies &amp; copy formats</div><div class="li-sub">Templates and category names per company</div></div><div class="li-end">›</div></a>
       <section class="card">
-        <label>Mileage rate, own car (SEK per mil = 10 km)<input id="rate" inputmode="decimal" value="${formatAmount(rate)}"></label>
-        <p class="muted small">Skatteverket's tax-free rate for own car is 25 SEK/mil. Your employer may pay more.</p>
+        <label>${esc(t('language'))}<select id="language">${options(LANGUAGES, getLanguage(), { value: (l) => l.id, label: (l) => l.label })}</select></label>
+      </section>
+      <a class="list-item card" href="#/companies"><div class="li-main"><div class="li-title">${esc(t('companiesLink'))}</div><div class="li-sub">${esc(t('companiesLinkSub'))}</div></div><div class="li-end">›</div></a>
+      <section class="card">
+        <label>${esc(t('mileageRate'))}<input id="rate" inputmode="decimal" value="${formatAmount(rate)}"></label>
+        <p class="muted small">${esc(t('mileageRateHint'))}</p>
       </section>
       <section class="card">
-        <h3>Backup</h3>
-        <p class="muted small">Your data lives only on this phone: ${counts.trips} trips, ${counts.expenses} expenses, ${counts.receipts} receipts${est ? ` (${(est.usage / 1048576).toFixed(1)} MB)` : ''}. ${persisted ? 'Storage is marked persistent.' : 'Install the app to the home screen so Android keeps the data.'}</p>
-        <p class="muted small">Last backup: ${lastBackup ? dateTime(lastBackup) : 'never'}</p>
+        <h3>${esc(t('backup'))}</h3>
+        <p class="muted small">${esc(t('backupInfo', { ...counts, size: est ? ` (${(est.usage / 1048576).toFixed(1)} MB)` : '' }))} ${esc(persisted ? t('persisted') : t('notPersisted'))}</p>
+        <p class="muted small">${esc(t('lastBackup', { when: lastBackup ? dateTime(lastBackup) : t('never') }))}</p>
         <div class="grid2">
-          <button class="btn primary" data-action="backup">⬇ Export backup</button>
-          <label class="btn">⬆ Restore<input type="file" accept="application/json,.json" hidden id="restore"></label>
+          <button class="btn primary" data-action="backup">${esc(t('exportBackup'))}</button>
+          <label class="btn">${esc(t('restore'))}<input type="file" accept="application/json,.json" hidden id="restore"></label>
         </div>
       </section>
       <section class="card">
-        <h3>About</h3>
-        <p class="muted small">Positions are recorded when you tap start, change transport or end. Addresses come from OpenStreetMap and road distances from OSRM, only when online. Nothing else leaves the phone.</p>
+        <h3>${esc(t('about'))}</h3>
+        <p class="muted small">${esc(t('aboutText'))}</p>
       </section>`,
     actions: {
       backup: async () => {
@@ -793,20 +823,25 @@ async function settingsView() {
       },
     },
     bind(root) {
+      root.querySelector('#language').onchange = async (ev) => {
+        await applyLanguage(ev.target.value, { save: true });
+        render();
+      };
       root.querySelector('#rate').onchange = async (ev) => {
         const n = parseAmount(ev.target.value);
-        if (Number.isFinite(n)) { await db.setSetting('mileageRate', n); toast('Saved'); }
+        if (Number.isFinite(n)) { await db.setSetting('mileageRate', n); toast(t('saved')); }
       };
       root.querySelector('#restore').onchange = async (ev) => {
         const file = ev.target.files[0];
         if (!file) return;
-        if (!(await confirmSheet('Restore backup', 'Items in the backup are merged into your current data. Items with the same id are overwritten.', 'Restore'))) return;
+        if (!(await confirmSheet(t('restoreTitle'), t('restoreText'), t('restore')))) return;
         try {
           const n = await db.importBackup(file);
-          toast(`Restored ${n} items`);
+          await applyLanguage(await db.getSetting('language', getLanguage()));
+          toast(t('restored', { n }));
           render();
         } catch (err) {
-          toast(`Restore failed: ${err.message}`);
+          toast(t('restoreFailed', { msg: err.message }));
         }
       };
     },
@@ -819,4 +854,12 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('SW registration failed', err));
 }
 db.requestPersistence();
-render();
+
+(async () => {
+  await applyLanguage(cachedLanguage() || DEFAULT_LANGUAGE);
+  try {
+    const saved = await db.getSetting('language', null);
+    if (saved && saved !== getLanguage()) await applyLanguage(saved);
+  } catch { /* first run or storage unavailable: keep default */ }
+  render();
+})();

@@ -13,15 +13,15 @@
 </head>
 <body>
   <header class="topbar">
-    <button class="icon-btn" id="back" aria-label="Back" onclick="history.back()">‹</button>
+    <button class="icon-btn" id="back" aria-label="Back" data-i18n-label="back" onclick="history.back()">‹</button>
     <h1 id="title">Travel expenses</h1>
   </header>
   <main id="main"></main>
   <nav class="tabbar">
-    <a href="#/" data-tab="home"><span>🏠</span>Home</a>
-    <a href="#/trips" data-tab="trips"><span>🧭</span>Trips</a>
-    <a href="#/expenses" data-tab="expenses"><span>🧾</span>Expenses</a>
-    <a href="#/settings" data-tab="settings"><span>⚙️</span>Settings</a>
+    <a href="#/" data-tab="home"><span>🏠</span><b data-i18n="nav.home">Home</b></a>
+    <a href="#/trips" data-tab="trips"><span>🧭</span><b data-i18n="nav.trips">Trips</b></a>
+    <a href="#/expenses" data-tab="expenses"><span>🧾</span><b data-i18n="nav.expenses">Expenses</b></a>
+    <a href="#/settings" data-tab="settings"><span>⚙️</span><b data-i18n="nav.settings">Settings</b></a>
   </nav>
   <div id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="js/app.js"></script>

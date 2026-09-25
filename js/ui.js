@@ -1,4 +1,5 @@
 // Small DOM helpers shared by the views.
+import { t } from './i18n.js';
 
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -42,7 +43,7 @@ export async function copyText(text, what = 'Copied') {
 export function sheet(title, body, bind) {
   const dlg = document.createElement('dialog');
   dlg.className = 'sheet';
-  dlg.innerHTML = `<div class="sheet-head"><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="Close">✕</button></div><div class="sheet-body">${body}</div>`;
+  dlg.innerHTML = `<div class="sheet-head"><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="${esc(t('close'))}">✕</button></div><div class="sheet-body">${body}</div>`;
   document.body.appendChild(dlg);
   const close = () => {
     dlg.close();
@@ -64,7 +65,7 @@ export function sheet(title, body, bind) {
 export function confirmSheet(title, text, okLabel = 'OK', danger = false) {
   return new Promise((resolve) => {
     let answered = false;
-    const close = sheet(title, `<p>${esc(text)}</p><div class="row gap"><button class="btn" data-no>Cancel</button><button class="btn ${danger ? 'danger' : 'primary'}" data-yes>${esc(okLabel)}</button></div>`, (dlg, done) => {
+    const close = sheet(title, `<p>${esc(text)}</p><div class="row gap"><button class="btn" data-no>${esc(t('cancel'))}</button><button class="btn ${danger ? 'danger' : 'primary'}" data-yes>${esc(okLabel)}</button></div>`, (dlg, done) => {
       dlg.querySelector('[data-yes]').onclick = () => { answered = true; done(); resolve(true); };
       dlg.querySelector('[data-no]').onclick = () => { answered = true; done(); resolve(false); };
       dlg.addEventListener('close', () => { if (!answered) resolve(false); });
