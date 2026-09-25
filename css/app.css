@@ -89,6 +89,13 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 .grid2 label { margin-top: 0; }
+label.check { display: flex; align-items: center; gap: 12px; margin: 0; color: var(--text); font-size: 1rem; }
+label.check input { width: 22px; height: 22px; min-height: 0; margin: 0; flex: none; accent-color: var(--primary); }
+input.autofilled, select.autofilled { border-color: var(--live); box-shadow: inset 0 0 0 1px var(--live); }
+.ocr-status { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--accent); font-size: 0.9rem; }
+.ocr-status.busy { color: var(--muted); }
+.ocr-status.ok { color: var(--live); }
+.ocr-status.warn { color: var(--todo); }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;

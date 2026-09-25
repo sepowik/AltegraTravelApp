@@ -16,6 +16,7 @@ You record each trip and expense once, then copy it into whichever company's exp
 - Amount, currency, date, category, merchant, description, VAT, payment method, company, trip, status.
 - Receipt photo straight from the camera (downscaled to save space) or a PDF/image file.
 - Expenses added during an active trip are linked to it automatically.
+- **Receipt reading**: after you take or pick a receipt photo, the app reads it on the phone (Tesseract OCR, Swedish, English and German) and fills in amount, date, merchant, VAT, currency and category. Only empty fields, or the default date and currency on a new expense, are filled in, and nothing you've typed is overwritten. Filled fields are outlined in green so you can check them. The reader (about 10 MB) downloads the first time and then works offline. It can be turned off in Settings. PDFs are not read.
 
 **Copying out**
 - Tap any field to copy it, then paste it into the other app, one field at a time.
@@ -42,7 +43,7 @@ You record each trip and expense once, then copy it into whichever company's exp
 ### Limitations (by design, for now)
 - A web app can only read GPS while it is open. Positions are captured when you tap, not tracked continuously. The car distance is the road route between the recorded points, and you can edit it.
 - Transport is picked manually, not detected automatically.
-- No receipt scanning (OCR) or currency conversion yet.
+- Receipt reading works best on flat, sharp, well-lit photos. Crumpled or faded receipts may need manual entry. No currency conversion yet.
 
 ## Install on your Android phone
 
@@ -68,6 +69,8 @@ npm test       # unit tests for the pure helpers (Node 20+)
 | `js/util.js` | Pure helpers: templates, CSV, legs/distances, formatting (unit tested) |
 | `js/db.js` | IndexedDB storage, backup export/import |
 | `js/geo.js` | GPS, reverse geocoding, road distance |
+| `js/ocr.js`, `js/receipt-parse.js` | On-device receipt reading and the rules that pick out amount, date, VAT etc. (unit tested) |
+| `vendor/tesseract/` | Bundled OCR engine and language data, see its README |
 | `js/receipts.js` | Receipt storage, downscaling, sharing |
 | `sw.js` | Offline cache. Bump `VERSION` when shipping changes. |
 
@@ -82,5 +85,4 @@ Use `\t` for tab and `\n` for new line.
 ## Ideas for later
 - Traktamente (Swedish per diem) calculation from the recorded departure/return times, with meal deductions
 - Currency conversion to SEK at the rate on the expense date
-- Receipt OCR to fill in amount and date
 - A native (Flutter) version if continuous GPS tracking for mileage becomes important

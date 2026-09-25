@@ -1,5 +1,7 @@
 // Offline support: the app shell is cached; bump VERSION when shipping changes.
-const VERSION = 'v2';
+const VERSION = 'v3';
+// Large, versioned third-party files (OCR engine) live in their own cache that survives app updates.
+const VENDOR_CACHE = 'travel-vendor-tesseract-7.0.0';
 const CACHE = `travel-${VERSION}`;
 const SHELL = [
   './',
@@ -9,6 +11,8 @@ const SHELL = [
   'js/db.js',
   'js/geo.js',
   'js/i18n.js',
+  'js/ocr.js',
+  'js/receipt-parse.js',
   'js/receipts.js',
   'js/ui.js',
   'js/util.js',
@@ -25,7 +29,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('travel-') && k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('travel-') && k !== CACHE && k !== VENDOR_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -35,6 +39,16 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
+  if (url.pathname.includes('/vendor/')) {
+    // Cache first: these files never change under the same path.
+    e.respondWith(
+      caches.open(VENDOR_CACHE).then((c) => c.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
+        if (res.ok) c.put(e.request, res.clone());
+        return res;
+      }))),
+    );
+    return;
+  }
   e.respondWith(
     fetch(e.request)
       .then((res) => {

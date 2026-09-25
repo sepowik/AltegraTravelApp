@@ -1,6 +1,7 @@
 import * as db from './db.js';
 import * as geo from './geo.js';
 import { saveReceipt, shareReceipts, download } from './receipts.js';
+import { readReceipt } from './ocr.js';
 import { esc, options, toast, copyText, sheet, confirmSheet, objectUrl, revokeUrls } from './ui.js';
 import { t, setLanguage, getLanguage, LANGUAGES, DEFAULT_LANGUAGE } from './i18n.js';
 import {
@@ -571,6 +572,7 @@ async function expenseFormView(id, query) {
   }
   const newReceipts = [];
   const removed = new Set();
+  const ocrEnabled = await db.getSetting('receiptOcr', true);
   const thumb = (r) => `<div class="thumb" data-rid="${r.id}">${r.type.startsWith('image/') ? `<img src="${objectUrl(r.blob)}" alt="">` : `<span class="pdf">PDF</span>`}<button type="button" class="thumb-x" data-remove="${r.id}" aria-label="${esc(t('remove'))}">✕</button></div>`;
 
   return {
@@ -582,6 +584,7 @@ async function expenseFormView(id, query) {
           <label class="btn">${esc(t('file'))}<input type="file" accept="image/*,application/pdf" multiple hidden data-add></label>
         </div>
         <div class="thumbs" id="thumbs">${receipts.map(thumb).join('')}</div>
+        <div class="ocr-status" id="ocr-status" role="status" hidden></div>
         <div class="grid2">
           <label>${esc(t('amount'))}<input name="amount" inputmode="decimal" required value="${Number.isFinite(e.amount) ? formatAmount(e.amount) : ''}" placeholder="0,00"></label>
           <label>${esc(t('currency'))}<input name="currency" list="currencies" value="${esc(e.currency)}" maxlength="3" required></label>
@@ -606,14 +609,72 @@ async function expenseFormView(id, query) {
     bind(root) {
       const form = root.querySelector('#expense-form');
       const thumbs = root.querySelector('#thumbs');
+      const status = root.querySelector('#ocr-status');
+      // Fields the user has edited are never overwritten by receipt reading.
+      const touched = new Set();
+      form.addEventListener('input', (ev) => {
+        if (!ev.target.name) return;
+        touched.add(ev.target.name);
+        ev.target.classList.remove('autofilled');
+      });
+      const showStatus = (msg, kind) => {
+        status.hidden = false;
+        status.className = `ocr-status ${kind}`;
+        status.textContent = msg;
+      };
+      const fillFromReceipt = (fields) => {
+        const map = {
+          amount: [(v) => formatAmount(v), 'amount'],
+          vat: [(v) => formatAmount(v), 'vat'],
+          date: [(v) => v, 'date'],
+          currency: [(v) => v, 'currency'],
+          merchant: [(v) => v, 'merchant'],
+          category: [(v) => v, 'category'],
+        };
+        const filled = [];
+        for (const [name, [fmt, labelKey]] of Object.entries(map)) {
+          if (fields[name] == null) continue;
+          const el = form[name];
+          // Date and currency start with defaults on a new expense; those may be replaced.
+          const replaceable = el.value === '' || (!existing && (name === 'date' || name === 'currency'));
+          if (touched.has(name) || !replaceable) continue;
+          const value = fmt(fields[name]);
+          if (el.value !== value) el.value = value;
+          el.classList.add('autofilled');
+          filled.push(t(labelKey));
+        }
+        return filled;
+      };
+      let ocrRun = 0;
+      const runOcr = async (blob) => {
+        const run = ++ocrRun;
+        showStatus(t('ocrLoading', { pct: 0 }), 'busy');
+        try {
+          const { fields } = await readReceipt(blob, (stage, f) => {
+            if (run === ocrRun) showStatus(t(stage === 'reading' ? 'ocrReading' : 'ocrLoading', { pct: Math.round(f * 100) }), 'busy');
+          });
+          if (run !== ocrRun || !form.isConnected) return;
+          const filled = fillFromReceipt(fields);
+          showStatus(filled.length ? t('ocrFilled', { fields: filled.join(', ') }) : t('ocrNothing'), filled.length ? 'ok' : 'warn');
+        } catch (err) {
+          console.error(err);
+          if (run === ocrRun) showStatus(t('ocrFailed', { msg: err?.message || String(err) }), 'warn');
+        }
+      };
       root.querySelectorAll('[data-add]').forEach((input) => {
         input.onchange = async () => {
+          const added = [];
           for (const f of input.files) {
             const r = await saveReceipt(f);
             newReceipts.push(r);
+            added.push(r);
             thumbs.insertAdjacentHTML('beforeend', thumb(r));
           }
           input.value = '';
+          if (!ocrEnabled || !added.length) return;
+          const image = added.find((r) => r.type.startsWith('image/'));
+          if (image) runOcr(image.blob);
+          else showStatus(t('ocrPdf'), 'warn');
         };
       });
       thumbs.onclick = (ev) => {
@@ -791,6 +852,7 @@ async function settingsView() {
   const counts = {};
   for (const s of ['trips', 'expenses', 'receipts']) counts[s] = (await db.all(s)).length;
   const lastBackup = await db.getSetting('lastBackup', null);
+  const ocr = await db.getSetting('receiptOcr', true);
   return {
     title: t('nav.settings'),
     html: `
@@ -798,6 +860,10 @@ async function settingsView() {
         <label>${esc(t('language'))}<select id="language">${options(LANGUAGES, getLanguage(), { value: (l) => l.id, label: (l) => l.label })}</select></label>
       </section>
       <a class="list-item card" href="#/companies"><div class="li-main"><div class="li-title">${esc(t('companiesLink'))}</div><div class="li-sub">${esc(t('companiesLinkSub'))}</div></div><div class="li-end">›</div></a>
+      <section class="card">
+        <label class="check"><input type="checkbox" id="ocr"${ocr ? ' checked' : ''}><span>${esc(t('receiptReading'))}</span></label>
+        <p class="muted small">${esc(t('receiptReadingHint'))}</p>
+      </section>
       <section class="card">
         <label>${esc(t('mileageRate'))}<input id="rate" inputmode="decimal" value="${formatAmount(rate)}"></label>
         <p class="muted small">${esc(t('mileageRateHint'))}</p>
@@ -827,6 +893,10 @@ async function settingsView() {
         await applyLanguage(ev.target.value, { save: true });
         render();
       };
+      root.querySelector('#ocr').onchange = async (ev) => {
+        await db.setSetting('receiptOcr', ev.target.checked);
+        toast(t('saved'));
+      };
       root.querySelector('#rate').onchange = async (ev) => {
         const n = parseAmount(ev.target.value);
         if (Number.isFinite(n)) { await db.setSetting('mileageRate', n); toast(t('saved')); }
@@ -854,6 +924,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('SW registration failed', err));
 }
 db.requestPersistence();
+db.removeOrphanReceipts().catch(() => {});
 
 (async () => {
   await applyLanguage(cachedLanguage() || DEFAULT_LANGUAGE);

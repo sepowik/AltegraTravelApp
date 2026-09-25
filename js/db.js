@@ -89,6 +89,20 @@ export async function deleteExpense(expense) {
   await remove('expenses', expense.id);
 }
 
+// Removes receipt files left behind when an expense form was cancelled after adding a photo.
+// Only files older than a day are touched, so a form that is still open keeps its photos.
+export async function removeOrphanReceipts(maxAgeMs = 86400000) {
+  const used = new Set((await all('expenses')).flatMap((e) => e.receiptIds || []));
+  let removed = 0;
+  for (const r of await all('receipts')) {
+    if (!used.has(r.id) && Date.now() - (r.addedAt || 0) > maxAgeMs) {
+      await remove('receipts', r.id);
+      removed++;
+    }
+  }
+  return removed;
+}
+
 // Asks the browser not to evict our data under storage pressure.
 export async function requestPersistence() {
   try {
