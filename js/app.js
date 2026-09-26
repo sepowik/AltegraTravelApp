@@ -2,6 +2,7 @@ import * as db from './db.js';
 import * as geo from './geo.js';
 import { saveReceipt, shareReceipts, download } from './receipts.js';
 import { readReceipt } from './ocr.js';
+import { pickCar, applyCarChoice, currentCar, carLabel, carsView, carView, placesView, chargeView, rateSheet } from './ev.js';
 import { esc, options, toast, copyText, sheet, confirmSheet, objectUrl, revokeUrls } from './ui.js';
 import { t, setLanguage, getLanguage, LANGUAGES, DEFAULT_LANGUAGE } from './i18n.js';
 import {
@@ -72,6 +73,10 @@ async function render() {
     else if (section === 'companies') view = await companiesView();
     else if (section === 'company') view = await companyView(id);
     else if (section === 'settings') view = await settingsView();
+    else if (section === 'cars') view = await carsView();
+    else if (section === 'car') view = await carView(id, nav);
+    else if (section === 'places') view = await placesView(nav);
+    else if (section === 'charge') view = await chargeView(id, nav);
     else view = { title: t('title.notFound'), html: `<p class="empty">${esc(t('notFound'))}</p>` };
   } catch (err) {
     console.error(err);
@@ -83,7 +88,7 @@ async function render() {
   view.bind?.(main);
   document.querySelectorAll('.tabbar a').forEach((a) => {
     const tab = a.dataset.tab;
-    const active = tab === (section || 'home') || (tab === 'trips' && section === 'trip') || (tab === 'expenses' && section === 'expense') || (tab === 'settings' && (section === 'companies' || section === 'company'));
+    const active = tab === (section || 'home') || (tab === 'trips' && section === 'trip') || (tab === 'expenses' && section === 'expense') || (tab === 'settings' && ['companies', 'company', 'cars', 'car', 'places'].includes(section)) || (tab === 'home' && section === 'charge');
     a.classList.toggle('active', active);
   });
   if (location.hash !== lastHash) window.scrollTo(0, 0);
@@ -101,6 +106,8 @@ main.addEventListener('click', (e) => {
 });
 
 window.addEventListener('hashchange', render);
+
+const nav = { go: (hash) => go(hash), render: () => render() };
 
 // ---------- shared data helpers ----------
 
@@ -211,11 +218,11 @@ async function startTrip() {
     dlg.querySelectorAll('[data-transport]').forEach((btn) => {
       btn.onclick = async () => {
         const val = (n) => dlg.querySelector(`[name=${n}]`).value.trim();
+        const details = { destination: val('destination'), purpose: val('purpose'), companyId: val('companyId') };
+        const choice = await pickCar(dlg, btn.dataset.transport, t('startTripBtn'));
         const point = { id: uid(), time, transport: btn.dataset.transport };
-        const trip = {
-          id: uid(), status: 'active', points: [point], createdAt: time,
-          destination: val('destination'), purpose: val('purpose'), companyId: val('companyId'),
-        };
+        const trip = { id: uid(), status: 'active', points: [point], createdAt: time, ...details };
+        await applyCarChoice(trip, point, choice);
         await db.put('trips', trip);
         if (trip.companyId) await db.setSetting('lastCompanyId', trip.companyId);
         close();
@@ -234,8 +241,10 @@ async function changeTransport(tripId) {
   sheet(t('changeTransport'), `<p class="muted">${esc(t('newLegFrom', { time: isoTime(time) }))}</p>${transportGrid()}`, (dlg, close) => {
     dlg.querySelectorAll('[data-transport]').forEach((btn) => {
       btn.onclick = async () => {
+        const choice = await pickCar(dlg, btn.dataset.transport, t('changeTransport'));
         const trip = await db.get('trips', tripId);
         const point = { id: uid(), time, transport: btn.dataset.transport };
+        await applyCarChoice(trip, point, choice);
         trip.points.push(point);
         await db.put('trips', trip);
         close();
@@ -299,12 +308,16 @@ async function homeView() {
     const current = legs[legs.length - 1];
     const tr = transportById(current?.transport);
     const tripExpenses = expenses.filter((e) => e.tripId === trip.id);
+    const car = await currentCar(trip);
+    const ev = car?.fuel === 'electric';
     tripHtml = `
       <section class="card active-trip">
         <div class="row between"><span class="badge live">${esc(t('onTrip'))}</span><a href="#/trip/${trip.id}" class="link">${esc(t('details'))}</a></div>
         <h2>${esc(tripTitle(trip))}</h2>
         <p class="muted">${esc(t('leftFrom', { time: dateTime(tripStart(trip)), place: placeLabel(trip.points[0]) }))}</p>
         <div class="big-stat"><span class="t-icon">${tr.icon}</span><div><div class="stat-label">${esc(t('since', { transport: tr.label, time: isoTime(current.from.time) }))}</div><div class="stat-value" id="elapsed">${formatDuration(Date.now() - tripStart(trip))}</div></div></div>
+        ${car ? `<p class="muted small">${esc(carLabel(car))}${ev && trip.battery ? ` · 🔋 ${trip.battery.pct}%` : ''}</p>` : ''}
+        ${ev ? `<a class="btn block" href="#/charge/${trip.id}">${esc(t('chargingStops'))}</a>` : ''}
         <div class="grid2">
           <a class="btn primary big" href="#/expense/new?trip=${trip.id}">${esc(t('addExpenseBtn'))}</a>
           <button class="btn big" data-action="change" data-id="${trip.id}">${esc(t('changeTransportBtn'))}</button>
@@ -377,6 +390,8 @@ async function tripView(id) {
   const km = ownCarKm(trip);
   const values = tripValues(trip, company);
   const mileageRate = await db.getSetting('mileageRate', 25);
+  const carsById = Object.fromEntries((await db.all('cars')).map((c) => [c.id, c]));
+  const curCar = trip.status === 'active' ? await currentCar(trip) : null;
 
   const pointHtml = (p, i) => {
     const isEnd = trip.status === 'done' && i === trip.points.length - 1;
@@ -390,6 +405,7 @@ async function tripView(id) {
         <input class="inline wide" value="${esc(p.place || '')}" placeholder="${esc(placeLabel(p))}" data-point="${p.id}" data-field="place">
         ${Number.isFinite(p.lat) ? `<a class="link small" href="${geo.mapUrl(p)}" target="_blank" rel="noopener">${esc(t('map'))}</a>` : `<button class="link small" data-action="relocate" data-point="${p.id}">${esc(p.positionError ? t('retryGps') : t('locating'))}</button>`}
       </div>
+      ${carsById[p.carId] ? `<div class="muted small">${esc(carLabel(carsById[p.carId]))}${Number.isFinite(p.chargePct) ? ` · 🔋 ${p.chargePct}%` : ''}</div>` : ''}
       ${leg ? `<div class="tl-leg">
         <select class="inline" data-point="${p.id}" data-field="transport">${options(TRANSPORTS, p.transport, { value: (x) => x.id, label: (x) => `${x.icon} ${x.label}` })}</select>
         ${leg.to ? `<span class="muted small">${formatDuration(leg.to.time - p.time)}</span>` : `<span class="badge live">${esc(t('now'))}</span>`}
@@ -403,6 +419,7 @@ async function tripView(id) {
     title: tripTitle(trip),
     html: `
       ${trip.status === 'active' ? `<div class="grid2"><button class="btn" data-action="change">${esc(t('changeTransportBtn'))}</button><button class="btn danger" data-action="end">${esc(t('endTripBtn'))}</button></div>` : ''}
+      ${curCar?.fuel === 'electric' ? `<a class="btn block" href="#/charge/${trip.id}">${esc(t('chargingStops'))}</a>` : ''}
       <section class="card">
         <label>${esc(t('destination'))}<input name="destination" value="${esc(trip.destination || '')}" placeholder="${esc(t('destinationPh'))}"></label>
         <label>${esc(t('purpose'))}<input name="purpose" value="${esc(trip.purpose || '')}" placeholder="${esc(t('purposePh'))}"></label>
@@ -564,6 +581,9 @@ async function expenseFormView(id, query) {
     id: uid(), tripId, date: isoDate(Date.now()), currency: await db.getSetting('lastCurrency', 'SEK'),
     category: '', companyId: trip?.companyId || (await db.getSetting('lastCompanyId', '')),
     status: 'todo', receiptIds: [], payment: await db.getSetting('lastPayment', ''),
+    // Prefilled when adding a meal from a charging stop's restaurant list.
+    merchant: query.get('merchant') || '', category: CATEGORIES.includes(query.get('category')) ? query.get('category') : '',
+    placeId: query.get('place') || undefined,
   };
   const receipts = [];
   for (const rid of e.receiptIds || []) {
@@ -726,6 +746,7 @@ async function expenseView(id) {
     if (r) receipts.push(r);
   }
   // "Next" walks through the remaining expenses to report for the same company.
+  const place = e.placeId ? await db.get('places', e.placeId) : null;
   const queue = sortExpenses(await db.all('expenses')).filter((x) => x.status === 'todo' && x.companyId === e.companyId && x.id !== e.id);
   return {
     title: e.merchant || categoryLabel(e.category) || t('title.expense'),
@@ -754,11 +775,15 @@ async function expenseView(id) {
           ? `<a href="${objectUrl(r.blob)}" target="_blank" class="thumb"><img src="${objectUrl(r.blob)}" alt="${esc(t('receipt', { n: 1 }))}"></a>`
           : `<a href="${objectUrl(r.blob)}" target="_blank" class="thumb"><span class="pdf">PDF</span></a>`).join('')}</div>
         <button class="link small" data-action="save">${esc(t('saveReceipt'))}</button></section>` : `<p class="muted small center">${esc(t('noReceipt'))}</p>`}
+      ${e.placeId ? `<button class="btn block" data-action="rateplace">${place?.rating ? `${'★'.repeat(place.rating)}${'☆'.repeat(5 - place.rating)} · ` : ''}${esc(t('rateTitle', { name: e.merchant || place?.name || '' }))}</button>` : ''}
       ${trip ? `<p class="center"><a class="link" href="#/trip/${trip.id}">${esc(t('tripLink', { trip: tripTitle(trip) }))}</a></p>` : ''}
       <div class="grid2"><a class="btn" href="#/expense/${e.id}/edit">${esc(t('edit'))}</a><button class="btn danger" data-action="delete">${esc(t('delete'))}</button></div>
       ${queue.length ? `<a class="btn block" href="#/expense/${queue[0].id}">${esc(t('nextToReport', { n: queue.length }))}</a>` : ''}`,
     actions: {
       copy: copyAction,
+      rateplace: async () => {
+        if (await rateSheet({ ...place, id: e.placeId, name: place?.name || e.merchant })) render();
+      },
       copyall: () => copyText(renderTemplate(company?.expenseTemplate || DEFAULT_EXPENSE_TEMPLATE, v), t('expenseCopied')),
       status: async (el) => {
         await db.put('expenses', { ...e, status: el.dataset.status, updatedAt: Date.now() });
@@ -859,6 +884,8 @@ async function settingsView() {
       <section class="card">
         <label>${esc(t('language'))}<select id="language">${options(LANGUAGES, getLanguage(), { value: (l) => l.id, label: (l) => l.label })}</select></label>
       </section>
+      <a class="list-item card" href="#/cars"><div class="li-main"><div class="li-title">${esc(t('carsLink'))}</div><div class="li-sub">${esc(t('carsLinkSub'))}</div></div><div class="li-end">›</div></a>
+      <a class="list-item card" href="#/places"><div class="li-main"><div class="li-title">${esc(t('ratedPlacesLink'))}</div><div class="li-sub">${esc(t('ratedPlacesSub'))}</div></div><div class="li-end">›</div></a>
       <a class="list-item card" href="#/companies"><div class="li-main"><div class="li-title">${esc(t('companiesLink'))}</div><div class="li-sub">${esc(t('companiesLinkSub'))}</div></div><div class="li-end">›</div></a>
       <section class="card">
         <label class="check"><input type="checkbox" id="ocr"${ocr ? ' checked' : ''}><span>${esc(t('receiptReading'))}</span></label>

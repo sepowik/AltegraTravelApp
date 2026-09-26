@@ -48,6 +48,45 @@ export async function roadDistanceKm(a, b) {
   }
 }
 
+// Place name → { lat, lon, name } via OpenStreetMap Nominatim, or null.
+export async function geocode(query) {
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`;
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error(`Nominatim ${res.status}`);
+  const [hit] = await res.json();
+  return hit ? { lat: Number(hit.lat), lon: Number(hit.lon), name: hit.display_name?.split(',').slice(0, 2).join(',') || query } : null;
+}
+
+// Driving route with its shape: { coords: [[lon, lat], ...], km }.
+export async function drivingRoute(a, b) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`OSRM ${res.status}`);
+  const route = (await res.json()).routes?.[0];
+  if (!route) throw new Error('No route found');
+  return { coords: route.geometry.coordinates, km: route.distance / 1000 };
+}
+
+// OpenStreetMap Overpass query → elements. Tries a second public server if the first is busy.
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+export async function overpass(query) {
+  let lastError;
+  for (const url of OVERPASS) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `data=${encodeURIComponent(query)}`,
+      });
+      if (!res.ok) throw new Error(`Overpass ${res.status}`);
+      return (await res.json()).elements || [];
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
+
 export function mapUrl(p) {
   return `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=16/${p.lat}/${p.lon}`;
 }

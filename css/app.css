@@ -208,3 +208,22 @@ input.autofilled, select.autofilled { border-color: var(--live); box-shadow: ins
   opacity: 0; pointer-events: none; transition: all .2s; z-index: 20; max-width: calc(100% - 32px);
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* cars, charging stops, ratings */
+.car-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.car-btn { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.car-btn .t-icon { font-size: 1.6rem; }
+.car-btn.last { border-color: var(--primary); }
+.car-btn.on { background: var(--accent); border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.ev-extra { margin-top: 4px; }
+.ev-extra label.check { margin-top: 14px; }
+.check-chip { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--text); font-size: 0.9rem; }
+.check-chip input { width: 18px; height: 18px; min-height: 0; margin: 0; accent-color: var(--primary); }
+.stars { color: #e0a100; letter-spacing: 1px; white-space: nowrap; }
+.stars-input { display: flex; justify-content: center; gap: 6px; margin: 8px 0 4px; }
+.stars-input button { background: none; border: 0; font-size: 2.4rem; line-height: 1; color: #e0a100; cursor: pointer; padding: 4px; }
+.stop h3 { margin: 0; font-size: 1.05rem; }
+.stop h4 { margin: 14px 0 6px; font-size: 0.95rem; }
+.stop .list-item.food .li-end { gap: 6px; }
+.warn { color: var(--todo); }
+.li-end .link { padding: 2px 0; }

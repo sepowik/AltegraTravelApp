@@ -1,8 +1,9 @@
 // IndexedDB storage. Everything stays on the device; use Settings → Backup to export.
 
 const DB_NAME = 'altegra-travel';
-const DB_VERSION = 1;
-export const STORES = ['trips', 'expenses', 'companies', 'receipts', 'settings'];
+const DB_VERSION = 2;
+// cars: the user's cars; places: restaurant ratings keyed by OSM id (e.g. "osm:node/123").
+export const STORES = ['trips', 'expenses', 'companies', 'receipts', 'settings', 'cars', 'places'];
 
 let dbPromise;
 
@@ -24,6 +25,8 @@ function open() {
         // Receipt files are stored separately so expense lists stay light.
         if (!db.objectStoreNames.contains('receipts')) db.createObjectStore('receipts', { keyPath: 'id' });
         if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('cars')) db.createObjectStore('cars', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('places')) db.createObjectStore('places', { keyPath: 'id' });
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);

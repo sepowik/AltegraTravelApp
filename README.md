@@ -12,6 +12,13 @@ You record each trip and expense once, then copy it into whichever company's exp
 - The trip view shows a timeline where every time, place, transport and km value can be corrected afterwards.
 - **Mileage expense**: one tap creates an expense from the own-car km × your rate (default 25 SEK/mil, Skatteverket's tax-free rate).
 
+**Cars and electric charging**
+- Settings → **My cars**: add the cars you drive (name, registration, fuel). For electric cars, add range, connectors (CCS, Type 2, CHAdeMO, Tesla), minimum charger power and optionally battery size.
+- When you start a trip (or change transport) by own car or company car, you pick which car. For an electric car you also enter the battery level, and can tick **I want to eat while charging**.
+- **⚡ Charging stops** (home screen and trip view, electric cars only) plans stops from where you are to the trip's destination: it follows the road route, keeps you above a reserve (default 10%), charges up to a limit (default 80%), prefers fast chargers that fit your car, and estimates charging time. Each stop has a **Navigate** button that opens Google Maps.
+- With *eat while charging* ticked, stops with restaurants, cafés or fast food within about 600 m are preferred and listed. **Rate** a place with 1–5 stars; places rated 1–2 stars are never suggested again, and places you liked come first. **＋ Expense** creates a meal expense for that place. Ratings can be changed under Settings → **Rated restaurants**.
+- Chargers and restaurants come from OpenStreetMap (Overpass), the destination from Nominatim and the route from OSRM, only when you plan stops. Only positions and the destination text are sent.
+
 **Expenses**
 - Amount, currency, date, category, merchant, description, VAT, payment method, company, trip, status.
 - Receipt photo straight from the camera (downscaled to save space) or a PDF/image file.
@@ -71,6 +78,7 @@ npm test       # unit tests for the pure helpers (Node 20+)
 | `js/geo.js` | GPS, reverse geocoding, road distance |
 | `js/ocr.js`, `js/receipt-parse.js` | On-device receipt reading and the rules that pick out amount, date, VAT etc. (unit tested) |
 | `vendor/tesseract/` | Bundled OCR engine and language data, see its README |
+| `js/ev.js`, `js/charging.js` | Cars, charging stop planning (unit tested), places to eat and ratings |
 | `js/receipts.js` | Receipt storage, downscaling, sharing |
 | `sw.js` | Offline cache. Bump `VERSION` when shipping changes. |
 
