@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseChargers, parseFoodPlaces, routeWithKm, sampleRoute, locateOnRoute, planCharging, foodNear,
-  chargersQuery, compatible,
+  chargersQuery, foodQuery, routeBoxes, compatible,
 } from '../js/charging.js';
 
 // A straight route due north from 57°N: 1° latitude ≈ 111.2 km.
@@ -50,7 +50,16 @@ test('route km, sampling and projection', () => {
   assert.ok(s.length > 150 && s.length <= 252);
   const loc = locateOnRoute(at(100, 1), route);
   assert.ok(Math.abs(loc.alongKm - 100) < 1.2 && Math.abs(loc.offKm - 1) < 0.1);
-  assert.match(chargersQuery(s.slice(0, 2)), /^\[out:json\].*charging_station.*around:2000,57\.00000,12\.00000,/);
+  const boxes = routeBoxes(route, 40, 3);
+  assert.equal(boxes.length, 12); // ~445 km in 40 km segments
+  // Every route point lies inside some box, with the padding around it.
+  for (const pt of route) assert.ok(boxes.some((b) => pt.lat >= b.s && pt.lat <= b.n && pt.lon >= b.w && pt.lon <= b.e));
+  assert.ok(boxes[0].s < 57 - 0.02 && boxes[0].w < 12 - 0.04);
+  const q = chargersQuery(boxes);
+  assert.match(q, /^\[out:json\]\[timeout:25\];\(nwr\["amenity"="charging_station"\]\(56\.97\d\d,11\.95\d\d,/);
+  assert.ok(!q.includes('around'));
+  assert.equal((q.match(/charging_station/g) || []).length, 12);
+  assert.match(foodQuery([{ lat: 57, lon: 12 }]), /restaurant\|fast_food\|cafe.*\(56\.9946,11\.9901,57\.0054,12\.0099\)/);
 });
 
 test('compatible checks connectors and minimum power', () => {

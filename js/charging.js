@@ -201,15 +201,50 @@ export function planCharging(route, chargers, car, opts) {
   return result;
 }
 
-// Overpass QL for charging stations within radius (m) of the sampled route line.
-export function chargersQuery(samples, radiusM = 2000) {
-  const line = samples.map((p) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`).join(',');
-  return `[out:json][timeout:60];nwr["amenity"="charging_station"](around:${radiusM},${line});out center tags;`;
+// Bounding boxes that cover the route in segments of about segmentKm, padded by padKm.
+// Box queries use Overpass's spatial index and are far cheaper than "around" a long
+// polyline, which the public servers often time out on (HTTP 504). Chargers are then
+// matched to the route precisely with locateOnRoute.
+export function routeBoxes(pts, segmentKm = 40, padKm = 3) {
+  const boxes = [];
+  let seg = [];
+  let segStart = 0;
+  const flush = () => {
+    if (!seg.length) return;
+    const lat = seg.map((p) => p.lat);
+    const lon = seg.map((p) => p.lon);
+    const s = Math.min(...lat); const n = Math.max(...lat);
+    const dLat = padKm / 111.2;
+    const dLon = padKm / (111.2 * Math.cos(((s + n) / 2) * Math.PI / 180));
+    boxes.push({ s: s - dLat, w: Math.min(...lon) - dLon, n: n + dLat, e: Math.max(...lon) + dLon });
+  };
+  for (const p of pts) {
+    seg.push(p);
+    if (p.km - segStart >= segmentKm) {
+      flush();
+      seg = [p];
+      segStart = p.km;
+    }
+  }
+  if (seg.length > 1 || !boxes.length) flush();
+  return boxes;
 }
 
+const bbox = (b) => `${b.s.toFixed(4)},${b.w.toFixed(4)},${b.n.toFixed(4)},${b.e.toFixed(4)}`;
+
+export function chargersQuery(boxes) {
+  const parts = boxes.map((b) => `nwr["amenity"="charging_station"](${bbox(b)});`);
+  return `[out:json][timeout:25];(${parts.join('')});out center tags;`;
+}
+
+// Small boxes (±radius) around each point, e.g. the chargers worth stopping at.
 export function foodQuery(points, radiusM = 600) {
-  const parts = points.map((p) => `nwr["amenity"~"^(restaurant|fast_food|cafe)$"]["name"](around:${radiusM},${p.lat.toFixed(5)},${p.lon.toFixed(5)});`);
-  return `[out:json][timeout:60];(${parts.join('')});out center tags;`;
+  const parts = points.map((p) => {
+    const dLat = radiusM / 111200;
+    const dLon = radiusM / (111200 * Math.cos(p.lat * Math.PI / 180));
+    return `nwr["amenity"~"^(restaurant|fast_food|cafe)$"]["name"](${bbox({ s: p.lat - dLat, w: p.lon - dLon, n: p.lat + dLat, e: p.lon + dLon })});`;
+  });
+  return `[out:json][timeout:25];(${parts.join('')});out center tags;`;
 }
 
 export function directionsUrl(p) {

@@ -67,24 +67,40 @@ export async function drivingRoute(a, b) {
   return { coords: route.geometry.coordinates, km: route.distance / 1000 };
 }
 
-// OpenStreetMap Overpass query → elements. Tries a second public server if the first is busy.
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
-export async function overpass(query) {
+// OpenStreetMap Overpass query → elements. The public servers are shared and often busy
+// (HTTP 429/504), so each is given a time limit and the next one is tried. If all fail,
+// the error has busy = true so the UI can offer "try again".
+export const OVERPASS_SERVERS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+];
+export async function overpass(query, { timeoutMs = 30000 } = {}) {
   let lastError;
-  for (const url of OVERPASS) {
+  for (const url of OVERPASS_SERVERS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `data=${encodeURIComponent(query)}`,
+        signal: ctrl.signal,
       });
       if (!res.ok) throw new Error(`Overpass ${res.status}`);
-      return (await res.json()).elements || [];
+      const json = await res.json();
+      // Overpass reports its own timeouts inside a 200 response.
+      if (json.remark && /timed out|out of memory/i.test(json.remark)) throw new Error(`Overpass: ${json.remark}`);
+      return json.elements || [];
     } catch (err) {
       lastError = err;
+    } finally {
+      clearTimeout(timer);
     }
   }
-  throw lastError;
+  const err = new Error(lastError?.name === 'AbortError' ? 'Overpass timeout' : lastError?.message || 'Overpass unavailable');
+  err.busy = true;
+  throw err;
 }
 
 export function mapUrl(p) {

@@ -7,7 +7,7 @@ import { esc, options, toast, sheet, confirmSheet } from './ui.js';
 import { t } from './i18n.js';
 import { uid, parseAmount, tripLegs, formatKm } from './util.js';
 import {
-  CONNECTORS, BAD_RATING, parseChargers, parseFoodPlaces, routeWithKm, sampleRoute, locateOnRoute,
+  CONNECTORS, BAD_RATING, parseChargers, parseFoodPlaces, routeWithKm, routeBoxes, locateOnRoute,
   compatible, planCharging, chargersQuery, foodQuery, directionsUrl,
 } from './charging.js';
 
@@ -304,7 +304,7 @@ export async function chargeView(tripId, nav) {
           const { coords } = await geo.drivingRoute(from, to);
           const route = routeWithKm(coords);
           status(t('findingChargers'));
-          const chargers = parseChargers(await geo.overpass(chargersQuery(sampleRoute(route))));
+          const chargers = parseChargers(await geo.overpass(chargersQuery(routeBoxes(route))));
           let food = [];
           if (s.eat && chargers.length) {
             status(t('findingFood'));
@@ -320,7 +320,9 @@ export async function chargeView(tripId, nav) {
           renderPlan();
         } catch (err) {
           console.error(err);
-          status(t('routeFailed', { msg: err?.message || String(err) }), 'warn');
+          const msg = err?.busy ? t('mapServiceBusy') : t('routeFailed', { msg: err?.message || String(err) });
+          out.innerHTML = `<p class="warn center">${esc(msg)}</p><button type="button" class="btn block" data-retry>${esc(t('tryAgain'))}</button>`;
+          out.querySelector('[data-retry]').onclick = () => search();
         }
       };
 
