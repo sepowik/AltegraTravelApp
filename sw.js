@@ -1,5 +1,5 @@
 // Offline support: the app shell is cached; bump VERSION when shipping changes.
-const VERSION = 'v5';
+const VERSION = 'v6';
 // Large, versioned third-party files (OCR engine) live in their own cache that survives app updates.
 const VENDOR_CACHE = 'travel-vendor-tesseract-7.0.0';
 const CACHE = `travel-${VERSION}`;

@@ -5,9 +5,9 @@ import { expenseValues, formatDuration, TRANSPORTS, expensesCsv } from '../js/ut
 
 afterEach(() => setLanguage(DEFAULT_LANGUAGE));
 
-test('all five languages are offered', async () => {
+test('all six languages are offered', async () => {
   const { LANGUAGES } = await import('../js/i18n.js');
-  assert.deepEqual(LANGUAGES.map((l) => l.id), ['en', 'sv', 'de', 'es', 'hi']);
+  assert.deepEqual(LANGUAGES.map((l) => l.id), ['en', 'sv', 'de', 'es', 'hi', 'ta']);
 });
 
 test('default language is English', () => {
@@ -43,6 +43,9 @@ test('switching language, plurals and unknown language', () => {
   assert.equal(t('nav.trips'), 'Viajes');
   setLanguage('hi');
   assert.equal(t('nav.expenses'), 'खर्च');
+  setLanguage('ta');
+  assert.equal(t('nav.trips'), 'பயணங்கள்');
+  assert.equal(t('stopsNeeded', { n: 2 }), '2 சார்ஜிங் நிறுத்தங்கள் பரிந்துரைக்கப்படுகின்றன.');
   setLanguage('xx');
   assert.equal(getLanguage(), 'en');
 });

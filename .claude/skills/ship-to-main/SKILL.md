@@ -14,7 +14,7 @@ Only ship work that is finished and validated. If a step below fails, fix it or 
 1. `npm test`, and all tests must pass.
 2. If app files changed, drive the real app in headless Chromium at phone size (Playwright, `devices['Pixel 7']`), served with `python3 -m http.server`. Exercise the changed flow and confirm there are no page or console errors. Look at a screenshot of any changed screen.
 3. If you added, renamed or removed files under `index.html`, `css/`, `js/`, `icons/` or `manifest.webmanifest`, update `SHELL` in `sw.js`. Bump `VERSION` in `sw.js` whenever app-shell files change so phones pick up the update.
-4. New UI text goes through `t()` in `js/i18n.js` with an entry for every language in `DICTIONARIES` (en, sv, de, es, hi). `tests/i18n.test.js` fails if a language is missing a key.
+4. New UI text goes through `t()` in `js/i18n.js` with an entry for every language in `DICTIONARIES` (en, sv, de, es, hi, ta). `tests/i18n.test.js` fails if a language is missing a key.
 5. If you added a new top-level folder that the site needs, add it to the `cp -r ...` line in `.github/workflows/pages.yml`.
 6. Re-read the diff for anything that would break the deploy or leak data (for example, secrets or personal data in committed files).
 
