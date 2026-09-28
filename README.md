@@ -29,6 +29,7 @@ You record each trip and expense once, then copy it into whichever company's exp
 - Tap any field to copy it, then paste it into the other app, one field at a time.
 - **Copy all** uses the company's own template, e.g. `{date}\t{amount}\t{currency}\t{category}` (tab-separated values paste straight into table rows).
 - **Category mapping** per company: your "Taxi" can become "Local transport" for one company.
+- **Report currency per company** (default SEK). When an expense is in another currency, the form also shows the **amount in the report currency**, calculated with the European Central Bank reference rate for the expense date (via the free Frankfurter service; only the currency codes and date are sent, and rates are cached on the phone). You can type the converted amount yourself, e.g. to match your card statement, and the rate is then marked as manual. The converted amount and rate can be copied, used in templates (`{report_amount}`, `{report_currency}`, `{rate}`) and are included in the CSV export. Older expenses get a **Calculate amount** button.
 - Per-company decimal separator (`389,50` vs `389.50`).
 - **Share receipt** opens Android's share menu to send the photo into the other app.
 - **Next to report** walks you through a company's outstanding expenses one by one.
@@ -84,7 +85,7 @@ npm test       # unit tests for the pure helpers (Node 20+)
 
 ### Template placeholders
 
-Expense: `{date} {amount} {currency} {category} {my_category} {merchant} {description} {vat} {payment} {company} {trip} {purpose} {destination}`
+Expense: `{date} {amount} {currency} {report_amount} {report_currency} {rate} {category} {my_category} {merchant} {description} {vat} {payment} {company} {trip} {purpose} {destination}`
 
 Trip: `{trip} {purpose} {destination} {start_date} {start_time} {start_place} {end_date} {end_time} {end_place} {transport} {car_km} {company}`
 

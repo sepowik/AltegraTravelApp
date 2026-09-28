@@ -58,7 +58,7 @@ test('stored ids stay the same, display and copy are translated', () => {
   assert.equal(v.payment, 'Kontant');
   assert.equal(label('cat', 'Custom thing'), 'Custom thing');
   assert.equal(formatDuration(65 * 60000), '1h 5min');
-  assert.match(expensesCsv([e]), /^Datum;Belopp;.*\r\n2026-09-21;120,00;SEK;Måltid;.*;Att rapportera$/);
+  assert.match(expensesCsv([e]), /^Datum;Belopp;.*\r\n2026-09-21;120,00;SEK;Måltid;.*;Att rapportera;120,00;SEK;1$/);
   // A company mapping still wins over the translation.
   assert.equal(expenseValues(e, { company: { categoryMap: { Meal: 'Traktamente' } } }).category, 'Traktamente');
 });

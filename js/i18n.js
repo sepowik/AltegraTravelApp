@@ -190,6 +190,17 @@ const en = {
   status: 'Status',
   invalidAmount: 'Enter a valid amount',
   otherCurrency: 'Other…',
+  reportCurrency: 'Report currency',
+  reportCurrencyHint: 'Expenses in other currencies also get the amount in this currency, at the European Central Bank rate for the expense date.',
+  amountIn: 'Amount in {cur}',
+  exchangeRate: 'Exchange rate',
+  rateLine: '1 {from} = {rate} {to} · ECB rate {date}',
+  rateManual: '1 {from} = {rate} {to} · entered manually',
+  rateLoading: 'Getting exchange rate…',
+  rateOffline: 'No exchange rate right now (offline?). Enter the amount in {to} yourself or try again later.',
+  rateUnavailable: 'There is no ECB rate for {cur}. Enter the amount in {to} yourself.',
+  updateRate: 'Use ECB rate',
+  convertBtn: '💱 Calculate amount in {cur}',
   currencyCodePh: 'Code, e.g. JPY',
   invalidCurrency: 'Enter a 3-letter currency code, e.g. JPY.',
 
@@ -350,7 +361,7 @@ const en = {
 
   // default copy template for trips
   tripTemplate: '{trip}\\nPurpose: {purpose}\\nDeparture: {start_date} {start_time}, {start_place}\\nReturn: {end_date} {end_time}, {end_place}\\nTransport: {transport}\\nOwn car: {car_km} km',
-  csvHeader: 'Date;Amount;Currency;Category;Merchant;Description;VAT;Trip;Purpose;Status',
+  csvHeader: 'Date;Amount;Currency;Category;Merchant;Description;VAT;Trip;Purpose;Status;Report amount;Report currency;Exchange rate',
 };
 
 const sv = {
@@ -525,6 +536,17 @@ const sv = {
   status: 'Status',
   invalidAmount: 'Ange ett giltigt belopp',
   otherCurrency: 'Annan…',
+  reportCurrency: 'Rapportvaluta',
+  reportCurrencyHint: 'Utlägg i andra valutor får också beloppet i den här valutan, enligt Europeiska centralbankens kurs för utläggets datum.',
+  amountIn: 'Belopp i {cur}',
+  exchangeRate: 'Växelkurs',
+  rateLine: '1 {from} = {rate} {to} · ECB-kurs {date}',
+  rateManual: '1 {from} = {rate} {to} · angiven manuellt',
+  rateLoading: 'Hämtar växelkurs…',
+  rateOffline: 'Ingen växelkurs just nu (offline?). Ange beloppet i {to} själv eller försök igen senare.',
+  rateUnavailable: 'ECB har ingen kurs för {cur}. Ange beloppet i {to} själv.',
+  updateRate: 'Använd ECB-kurs',
+  convertBtn: '💱 Räkna ut belopp i {cur}',
   currencyCodePh: 'Kod, t.ex. JPY',
   invalidCurrency: 'Ange en valutakod med tre bokstäver, t.ex. JPY.',
 
@@ -680,7 +702,7 @@ const sv = {
   hiddenFromSuggestions: 'föreslås inte',
 
   tripTemplate: '{trip}\\nSyfte: {purpose}\\nAvresa: {start_date} {start_time}, {start_place}\\nHemkomst: {end_date} {end_time}, {end_place}\\nFärdsätt: {transport}\\nEgen bil: {car_km} km',
-  csvHeader: 'Datum;Belopp;Valuta;Kategori;Säljare;Beskrivning;Moms;Resa;Syfte;Status',
+  csvHeader: 'Datum;Belopp;Valuta;Kategori;Säljare;Beskrivning;Moms;Resa;Syfte;Status;Belopp i rapportvaluta;Rapportvaluta;Växelkurs',
 };
 
 const de = {
@@ -855,6 +877,17 @@ const de = {
   status: 'Status',
   invalidAmount: 'Bitte einen gültigen Betrag eingeben',
   otherCurrency: 'Andere…',
+  reportCurrency: 'Abrechnungswährung',
+  reportCurrencyHint: 'Ausgaben in anderen Währungen erhalten zusätzlich den Betrag in dieser Währung, zum EZB-Kurs des Ausgabedatums.',
+  amountIn: 'Betrag in {cur}',
+  exchangeRate: 'Wechselkurs',
+  rateLine: '1 {from} = {rate} {to} · EZB-Kurs {date}',
+  rateManual: '1 {from} = {rate} {to} · manuell eingegeben',
+  rateLoading: 'Wechselkurs wird abgerufen…',
+  rateOffline: 'Gerade kein Wechselkurs verfügbar (offline?). Betrag in {to} selbst eingeben oder später erneut versuchen.',
+  rateUnavailable: 'Für {cur} gibt es keinen EZB-Kurs. Betrag in {to} bitte selbst eingeben.',
+  updateRate: 'EZB-Kurs verwenden',
+  convertBtn: '💱 Betrag in {cur} berechnen',
   currencyCodePh: 'Code, z. B. JPY',
   invalidCurrency: 'Bitte einen dreistelligen Währungscode eingeben, z. B. JPY.',
 
@@ -1010,7 +1043,7 @@ const de = {
   hiddenFromSuggestions: 'wird nicht vorgeschlagen',
 
   tripTemplate: '{trip}\\nZweck: {purpose}\\nAbfahrt: {start_date} {start_time}, {start_place}\\nRückkehr: {end_date} {end_time}, {end_place}\\nVerkehrsmittel: {transport}\\nPrivat-Pkw: {car_km} km',
-  csvHeader: 'Datum;Betrag;Währung;Kategorie;Händler;Beschreibung;MwSt.;Reise;Zweck;Status',
+  csvHeader: 'Datum;Betrag;Währung;Kategorie;Händler;Beschreibung;MwSt.;Reise;Zweck;Status;Betrag in Abrechnungswährung;Abrechnungswährung;Wechselkurs',
 };
 
 const es = {
@@ -1185,6 +1218,17 @@ const es = {
   status: 'Estado',
   invalidAmount: 'Introduce un importe válido',
   otherCurrency: 'Otra…',
+  reportCurrency: 'Moneda de informe',
+  reportCurrencyHint: 'Los gastos en otras monedas también muestran el importe en esta moneda, al tipo del Banco Central Europeo de la fecha del gasto.',
+  amountIn: 'Importe en {cur}',
+  exchangeRate: 'Tipo de cambio',
+  rateLine: '1 {from} = {rate} {to} · tipo BCE {date}',
+  rateManual: '1 {from} = {rate} {to} · introducido a mano',
+  rateLoading: 'Obteniendo tipo de cambio…',
+  rateOffline: 'Ahora no hay tipo de cambio (¿sin conexión?). Introduce el importe en {to} o inténtalo más tarde.',
+  rateUnavailable: 'El BCE no publica tipo para {cur}. Introduce el importe en {to} tú mismo.',
+  updateRate: 'Usar tipo BCE',
+  convertBtn: '💱 Calcular importe en {cur}',
   currencyCodePh: 'Código, p. ej. JPY',
   invalidCurrency: 'Introduce un código de moneda de tres letras, p. ej. JPY.',
 
@@ -1340,7 +1384,7 @@ const es = {
   hiddenFromSuggestions: 'no se sugiere',
 
   tripTemplate: '{trip}\\nMotivo: {purpose}\\nSalida: {start_date} {start_time}, {start_place}\\nRegreso: {end_date} {end_time}, {end_place}\\nTransporte: {transport}\\nCoche propio: {car_km} km',
-  csvHeader: 'Fecha;Importe;Moneda;Categoría;Comercio;Descripción;IVA;Viaje;Motivo;Estado',
+  csvHeader: 'Fecha;Importe;Moneda;Categoría;Comercio;Descripción;IVA;Viaje;Motivo;Estado;Importe en moneda de informe;Moneda de informe;Tipo de cambio',
 };
 
 const hi = {
@@ -1515,6 +1559,17 @@ const hi = {
   status: 'स्थिति',
   invalidAmount: 'मान्य राशि दर्ज करें',
   otherCurrency: 'अन्य…',
+  reportCurrency: 'रिपोर्ट मुद्रा',
+  reportCurrencyHint: 'दूसरी मुद्राओं के खर्चों में इस मुद्रा में राशि भी दिखाई जाती है, खर्च की तारीख की यूरोपीय सेंट्रल बैंक दर पर।',
+  amountIn: '{cur} में राशि',
+  exchangeRate: 'विनिमय दर',
+  rateLine: '1 {from} = {rate} {to} · ECB दर {date}',
+  rateManual: '1 {from} = {rate} {to} · हाथ से दर्ज',
+  rateLoading: 'विनिमय दर प्राप्त की जा रही है…',
+  rateOffline: 'अभी विनिमय दर उपलब्ध नहीं (ऑफ़लाइन?)। {to} में राशि खुद दर्ज करें या बाद में कोशिश करें।',
+  rateUnavailable: '{cur} के लिए ECB दर नहीं है। {to} में राशि खुद दर्ज करें।',
+  updateRate: 'ECB दर उपयोग करें',
+  convertBtn: '💱 {cur} में राशि निकालें',
   currencyCodePh: 'कोड, जैसे JPY',
   invalidCurrency: 'तीन अक्षरों का मुद्रा कोड दर्ज करें, जैसे JPY।',
 
@@ -1670,7 +1725,7 @@ const hi = {
   hiddenFromSuggestions: 'सुझाया नहीं जाता',
 
   tripTemplate: '{trip}\\nउद्देश्य: {purpose}\\nप्रस्थान: {start_date} {start_time}, {start_place}\\nवापसी: {end_date} {end_time}, {end_place}\\nपरिवहन: {transport}\\nअपनी कार: {car_km} km',
-  csvHeader: 'तारीख;राशि;मुद्रा;श्रेणी;विक्रेता;विवरण;VAT;यात्रा;उद्देश्य;स्थिति',
+  csvHeader: 'तारीख;राशि;मुद्रा;श्रेणी;विक्रेता;विवरण;VAT;यात्रा;उद्देश्य;स्थिति;रिपोर्ट मुद्रा में राशि;रिपोर्ट मुद्रा;विनिमय दर',
 };
 
 const ta = {
@@ -1845,6 +1900,17 @@ const ta = {
   status: 'நிலை',
   invalidAmount: 'சரியான தொகையை உள்ளிடவும்',
   otherCurrency: 'மற்றவை…',
+  reportCurrency: 'அறிக்கை நாணயம்',
+  reportCurrencyHint: 'பிற நாணயங்களில் உள்ள செலவுகளுக்கு, செலவுத் தேதியின் ஐரோப்பிய மத்திய வங்கி விகிதத்தில் இந்த நாணயத்திலும் தொகை காட்டப்படும்.',
+  amountIn: '{cur} இல் தொகை',
+  exchangeRate: 'மாற்று விகிதம்',
+  rateLine: '1 {from} = {rate} {to} · ECB விகிதம் {date}',
+  rateManual: '1 {from} = {rate} {to} · கைமுறையாக உள்ளிடப்பட்டது',
+  rateLoading: 'மாற்று விகிதம் பெறப்படுகிறது…',
+  rateOffline: 'இப்போது மாற்று விகிதம் இல்லை (இணைப்பு இல்லையா?). {to} இல் தொகையை நீங்களே உள்ளிடவும் அல்லது பின்னர் முயலவும்.',
+  rateUnavailable: '{cur} க்கு ECB விகிதம் இல்லை. {to} இல் தொகையை நீங்களே உள்ளிடவும்.',
+  updateRate: 'ECB விகிதத்தைப் பயன்படுத்து',
+  convertBtn: '💱 {cur} இல் தொகையைக் கணக்கிடு',
   currencyCodePh: 'குறியீடு, எ.கா. JPY',
   invalidCurrency: 'மூன்றெழுத்து நாணயக் குறியீட்டை உள்ளிடவும், எ.கா. JPY.',
 
@@ -2000,7 +2066,7 @@ const ta = {
   hiddenFromSuggestions: 'பரிந்துரைக்கப்படாது',
 
   tripTemplate: '{trip}\\nநோக்கம்: {purpose}\\nபுறப்பாடு: {start_date} {start_time}, {start_place}\\nதிரும்புதல்: {end_date} {end_time}, {end_place}\\nபோக்குவரத்து: {transport}\\nசொந்த கார்: {car_km} km',
-  csvHeader: 'தேதி;தொகை;நாணயம்;வகை;விற்பனையாளர்;விளக்கம்;VAT;பயணம்;நோக்கம்;நிலை',
+  csvHeader: 'தேதி;தொகை;நாணயம்;வகை;விற்பனையாளர்;விளக்கம்;VAT;பயணம்;நோக்கம்;நிலை;அறிக்கை நாணயத்தில் தொகை;அறிக்கை நாணயம்;மாற்று விகிதம்',
 };
 
 export const DICTIONARIES = { en, sv, de, es, hi, ta };

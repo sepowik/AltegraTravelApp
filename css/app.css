@@ -227,3 +227,9 @@ input.autofilled, select.autofilled { border-color: var(--live); box-shadow: ins
 .stop .list-item.food .li-end { gap: 6px; }
 .warn { color: var(--todo); }
 .li-end .link { padding: 2px 0; }
+
+/* amount in report currency */
+.fx { margin-top: 8px; padding: 2px 12px 8px; border-left: 3px solid var(--primary); background: var(--accent); border-radius: 0 10px 10px 0; }
+.fx label { margin-top: 8px; }
+.fx-line { margin: 6px 0 0; }
+.fx-line .link { padding: 0 0 0 4px; }

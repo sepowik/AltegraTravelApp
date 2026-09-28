@@ -2,11 +2,12 @@ import * as db from './db.js';
 import * as geo from './geo.js';
 import { saveReceipt, shareReceipts, download } from './receipts.js';
 import { readReceipt } from './ocr.js';
+import { getRate } from './fx.js';
 import { pickCar, applyCarChoice, currentCar, carLabel, carsView, carView, placesView, chargeView, rateSheet } from './ev.js';
 import { esc, options, toast, copyText, sheet, confirmSheet, objectUrl, revokeUrls } from './ui.js';
 import { t, setLanguage, getLanguage, LANGUAGES, DEFAULT_LANGUAGE } from './i18n.js';
 import {
-  TRANSPORTS, CATEGORIES, CURRENCIES, isCurrencyCode, currencyLabel, STATUSES, PAYMENTS, transportById, categoryLabel, paymentLabel,
+  TRANSPORTS, CATEGORIES, CURRENCIES, isCurrencyCode, currencyLabel, needsConversion, validConversion, convertAmount, formatRate, STATUSES, PAYMENTS, transportById, categoryLabel, paymentLabel,
   uid, isoDate, isoTime, dateTime, toLocalInput, formatDuration, parseAmount, formatAmount, formatKm,
   tripLegs, ownCarKm, tripStart, tripEnd, placeLabel, tripTitle, expenseValues, tripValues, renderTemplate,
   expensesCsv, DEFAULT_EXPENSE_TEMPLATE, defaultTripTemplate, EXPENSE_PLACEHOLDERS, TRIP_PLACEHOLDERS,
@@ -545,7 +546,7 @@ async function expensesView(query) {
     actions: {
       csv: async () => {
         const company = companies[companyId];
-        const csv = expensesCsv(list, { tripsById: trips, company });
+        const csv = expensesCsv(list, { tripsById: trips, company, companiesById: companies });
         download(new Blob(['﻿' + csv], { type: 'text/csv' }), `expenses-${company ? company.name.replace(/\W+/g, '_') : 'all'}-${isoDate(Date.now())}.csv`);
       },
       receipts: async () => {
@@ -572,7 +573,7 @@ async function expensesView(query) {
 async function expenseFormView(id, query) {
   const existing = id ? await db.get('expenses', id) : null;
   if (id && !existing) return { title: t('title.expense'), html: `<p class="empty">${esc(t('expenseNotFound'))}</p>` };
-  const { list: companyList } = await companiesById();
+  const { list: companyList, byId: companiesMap } = await companiesById();
   const { list: tripList, byId: trips } = await tripsById();
   const active = await db.activeTrip();
   const tripId = existing ? existing.tripId : query.get('trip') ?? active?.id ?? '';
@@ -612,6 +613,10 @@ async function expenseFormView(id, query) {
             <select name="currencyPick" data-field="currency">${options([...CURRENCIES, '__other'], CURRENCIES.includes(e.currency) ? e.currency : '__other', { label: (c) => (c === '__other' ? t('otherCurrency') : currencyLabel(c, getLanguage())) })}</select>
             <input name="currencyOther" data-field="currency" maxlength="3" autocapitalize="characters" autocomplete="off" placeholder="${esc(t('currencyCodePh'))}" value="${CURRENCIES.includes(e.currency) ? '' : esc(e.currency)}"${CURRENCIES.includes(e.currency) ? ' hidden' : ''}>
           </label>
+        </div>
+        <div class="fx" id="fx" hidden>
+          <label><span id="fx-label"></span><input name="convAmount" data-field="conversion" inputmode="decimal" placeholder="0,00"></label>
+          <p class="muted small fx-line"><span id="fx-line"></span> <button type="button" class="link small" id="fx-refresh">${esc(t('updateRate'))}</button></p>
         </div>
         <div class="grid2">
           <label>${esc(t('date'))}<input name="date" type="date" required value="${esc(e.date)}"></label>
@@ -666,6 +671,70 @@ async function expenseFormView(id, query) {
         other.value = other.value.toUpperCase().replace(/[^A-Z]/g, '');
         form.currency.value = other.value;
       });
+
+      // Amount in the company's report currency, shown when the expense is in another currency.
+      // Filled from the ECB rate for the expense date; typing an amount makes it a manual rate.
+      const fxBox = root.querySelector('#fx');
+      const fxLine = root.querySelector('#fx-line');
+      const convInput = form.convAmount;
+      let conv = e.conversion ? { ...e.conversion } : null;
+      let fxRun = 0;
+      let fxTimer;
+      const fxTarget = () => {
+        const report = companiesMap[form.companyId.value]?.reportCurrency;
+        const from = form.currency.value;
+        return report && isCurrencyCode(from) && from !== report ? { from, report } : null;
+      };
+      const showRate = () => {
+        if (!conv) return;
+        fxLine.textContent = conv.source === 'manual'
+          ? t('rateManual', { from: conv.from, to: conv.currency, rate: formatRate(conv.rate) })
+          : t('rateLine', { from: conv.from, to: conv.currency, rate: formatRate(conv.rate), date: conv.rateDate });
+      };
+      const recalc = () => {
+        const amount = parseAmount(form.amount.value);
+        if (!conv || conv.source === 'manual' || !Number.isFinite(conv.rate)) return;
+        conv.amount = convertAmount(amount, conv.rate);
+        convInput.value = Number.isFinite(conv.amount) ? formatAmount(conv.amount) : '';
+      };
+      const updateFx = async (force = false) => {
+        const target = fxTarget();
+        fxBox.hidden = !target;
+        if (!target) return;
+        root.querySelector('#fx-label').textContent = t('amountIn', { cur: target.report });
+        const same = conv && conv.from === target.from && conv.currency === target.report;
+        if (same && conv.source === 'manual' && !force) return showRate();
+        if (same && conv.rateFor === form.date.value && !force) { recalc(); return showRate(); }
+        const run = ++fxRun;
+        fxLine.textContent = t('rateLoading');
+        try {
+          const { rate, date } = await getRate(form.date.value, target.from, target.report);
+          if (run !== fxRun) return;
+          conv = { from: target.from, currency: target.report, rate, rateDate: date, rateFor: form.date.value, source: 'ecb' };
+          recalc();
+          showRate();
+        } catch (err) {
+          if (run !== fxRun) return;
+          if (!same) { conv = null; convInput.value = ''; }
+          fxLine.textContent = err.unsupported ? t('rateUnavailable', { cur: target.from, to: target.report }) : t('rateOffline', { to: target.report });
+        }
+      };
+      const scheduleFx = (force) => { clearTimeout(fxTimer); fxTimer = setTimeout(() => updateFx(force), 250); };
+      ['currencyPick', 'currencyOther', 'date', 'companyId'].forEach((n) => form[n].addEventListener('change', () => scheduleFx()));
+      form.currencyOther.addEventListener('input', () => scheduleFx());
+      form.amount.addEventListener('input', () => { recalc(); });
+      convInput.addEventListener('input', () => {
+        const amount = parseAmount(form.amount.value);
+        const value = parseAmount(convInput.value);
+        const target = fxTarget();
+        if (!target) return;
+        conv = Number.isFinite(value)
+          ? { from: target.from, currency: target.report, amount: value, rate: Number.isFinite(amount) && amount ? value / amount : NaN, rateDate: form.date.value, source: 'manual' }
+          : null;
+        if (conv) showRate(); else fxLine.textContent = '';
+      });
+      root.querySelector('#fx-refresh').onclick = () => updateFx(true);
+      updateFx();
       const showStatus = (msg, kind) => {
         status.hidden = false;
         status.className = `ocr-status ${kind}`;
@@ -710,6 +779,7 @@ async function expenseFormView(id, query) {
           if (run !== ocrRun || !form.isConnected) return;
           const filled = fillFromReceipt(fields);
           showStatus(filled.length ? t('ocrFilled', { fields: filled.join(', ') }) : t('ocrNothing'), filled.length ? 'ok' : 'warn');
+          if (filled.length) updateFx();
         } catch (err) {
           console.error(err);
           if (run === ocrRun) showStatus(t('ocrFailed', { msg: err?.message || String(err) }), 'warn');
@@ -755,8 +825,18 @@ async function expenseFormView(id, query) {
         const vat = parseAmount(fd.vat);
         const receiptIds = [...(e.receiptIds || []), ...newReceipts.map((r) => r.id)].filter((rid) => !removed.has(rid));
         for (const rid of removed) await db.remove('receipts', rid);
+        const { convAmount, ...fields } = fd;
+        const target = fxTarget();
+        let conversion;
+        if (target && conv && conv.from === target.from && conv.currency === target.report) {
+          const value = parseAmount(convAmount);
+          if (Number.isFinite(value)) {
+            const manual = conv.source === 'manual' || Math.abs(value - convertAmount(amount, conv.rate)) > 0.005;
+            conversion = { from: target.from, currency: target.report, amount: value, rate: manual ? value / amount : conv.rate, rateDate: conv.rateDate, source: manual ? 'manual' : 'ecb' };
+          }
+        }
         const saved = {
-          ...e, ...fd, amount, vat: Number.isFinite(vat) ? vat : undefined,
+          ...e, ...fields, amount, vat: Number.isFinite(vat) ? vat : undefined, conversion,
           currency: fd.currency.trim().toUpperCase(), merchant: fd.merchant.trim(), description: fd.description.trim(),
           receiptIds, createdAt: e.createdAt || Date.now(), updatedAt: Date.now(),
         };
@@ -802,6 +882,9 @@ async function expenseView(id) {
         ${copyRow(t('date'), v.date)}
         ${copyRow(t('amount'), v.amount)}
         ${copyRow(t('currency'), v.currency)}
+        ${needsConversion(e, company) ? (validConversion(e, company)
+          ? `${copyRow(t('amountIn', { cur: v.report_currency }), v.report_amount)}${copyRow(t('exchangeRate'), v.rate)}<p class="muted small center">${esc(e.conversion.source === 'manual' ? t('rateManual', { from: e.currency, to: v.report_currency, rate: v.rate }) : t('rateLine', { from: e.currency, to: v.report_currency, rate: v.rate, date: e.conversion.rateDate }))}</p>`
+          : `<button class="btn block" data-action="convert">${esc(t('convertBtn', { cur: company.reportCurrency }))}</button>`) : ''}
         ${copyRow(company?.categoryMap?.[e.category] ? t('categoryFor', { company: company.name }) : t('category'), v.category, t('category'))}
         ${copyRow(t('merchant'), v.merchant)}
         ${copyRow(t('description'), v.description)}
@@ -821,6 +904,18 @@ async function expenseView(id) {
       ${queue.length ? `<a class="btn block" href="#/expense/${queue[0].id}">${esc(t('nextToReport', { n: queue.length }))}</a>` : ''}`,
     actions: {
       copy: copyAction,
+      convert: async (el) => {
+        el.disabled = true;
+        try {
+          const { rate, date } = await getRate(e.date, e.currency, company.reportCurrency);
+          const conversion = { from: e.currency, currency: company.reportCurrency, amount: convertAmount(e.amount, rate), rate, rateDate: date, source: 'ecb' };
+          await db.put('expenses', { ...e, conversion, updatedAt: Date.now() });
+          render();
+        } catch (err) {
+          el.disabled = false;
+          toast(err.unsupported ? t('rateUnavailable', { cur: e.currency, to: company.reportCurrency }) : t('rateOffline', { to: company.reportCurrency }));
+        }
+      },
       rateplace: async () => {
         if (await rateSheet({ ...place, id: e.placeId, name: place?.name || e.merchant })) render();
       },
@@ -855,7 +950,7 @@ async function companiesView() {
 
 async function companyView(id) {
   const isNew = id === 'new';
-  const c = isNew ? { id: uid(), name: '', system: '', expenseTemplate: DEFAULT_EXPENSE_TEMPLATE, tripTemplate: defaultTripTemplate(), decimalSep: ',', csvSep: ';', categoryMap: {} } : await db.get('companies', id);
+  const c = isNew ? { id: uid(), name: '', system: '', expenseTemplate: DEFAULT_EXPENSE_TEMPLATE, tripTemplate: defaultTripTemplate(), decimalSep: ',', csvSep: ';', categoryMap: {}, reportCurrency: 'SEK' } : await db.get('companies', id);
   if (!c) return { title: t('title.company'), html: `<p class="empty">${esc(t('companyNotFound'))}</p>` };
   const chips = (list, target) => list.map((p) => `<button type="button" class="chip" data-insert="{${p}}" data-target="${target}">{${p}}</button>`).join('');
   return {
@@ -864,6 +959,8 @@ async function companyView(id) {
       <form id="company-form" class="card">
         <label>${esc(t('name'))}<input name="name" required value="${esc(c.name)}" placeholder="${esc(t('namePh'))}"></label>
         <label>${esc(t('system'))}<input name="system" value="${esc(c.system || '')}" placeholder="${esc(t('systemPh'))}"></label>
+        <label>${esc(t('reportCurrency'))}<select name="reportCurrency">${options(CURRENCIES, c.reportCurrency, { label: (x) => currencyLabel(x, getLanguage()), empty: '—' })}</select></label>
+        <p class="muted small">${esc(t('reportCurrencyHint'))}</p>
         <label>${esc(t('expenseFormat'))}<textarea name="expenseTemplate" rows="3" class="mono">${esc(c.expenseTemplate)}</textarea></label>
         <div class="chips small">${chips(EXPENSE_PLACEHOLDERS, 'expenseTemplate')}</div>
         <label>${esc(t('tripFormat'))}<textarea name="tripTemplate" rows="5" class="mono">${esc(c.tripTemplate)}</textarea></label>

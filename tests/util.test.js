@@ -74,7 +74,7 @@ test('expenseValues maps categories per company', () => {
   assert.equal(v.my_category, 'Taxi');
   assert.equal(renderTemplate(DEFAULT_EXPENSE_TEMPLATE, v), '2026-09-21\t389,00\tSEK\tLocal transport\tTaxi Sthlm\tAirport');
   const csv = expensesCsv([e], { tripsById: { t1: trip }, company });
-  assert.match(csv.split('\r\n')[1], /^2026-09-21;389,00;SEK;Local transport;Taxi Sthlm;Airport;;Stockholm;Customer meeting;To report$/);
+  assert.match(csv.split('\r\n')[1], /^2026-09-21;389,00;SEK;Local transport;Taxi Sthlm;Airport;;Stockholm;Customer meeting;To report;389,00;SEK;1$/);
 });
 
 test('currency codes and labels', async () => {
@@ -86,4 +86,34 @@ test('currency codes and labels', async () => {
   assert.match(currencyLabel('SEK', 'en'), /^SEK · Swedish krona$/i);
   assert.match(currencyLabel('SEK', 'sv'), /^SEK · svensk krona$/i);
   assert.equal(currencyLabel('XYZ', 'en').startsWith('XYZ'), true);
+});
+
+test('report currency conversion values', async () => {
+  const { needsConversion, validConversion, convertAmount, formatRate, expenseValues, renderTemplate } = await import('../js/util.js');
+  const company = { name: 'Altegra', decimalSep: ',', reportCurrency: 'SEK' };
+  const eur = { date: '2026-09-24', amount: 50.5, currency: 'EUR', category: 'Meal', status: 'todo',
+    conversion: { from: 'EUR', currency: 'SEK', amount: 581.92, rate: 11.5232, rateDate: '2026-09-24', source: 'ecb' } };
+  assert.equal(needsConversion(eur, company), true);
+  assert.equal(needsConversion({ ...eur, currency: 'SEK' }, company), false);
+  assert.equal(needsConversion(eur, { name: 'Old company' }), false);
+  assert.equal(convertAmount(50.5, 11.5232), 581.92);
+  assert.equal(formatRate(11.5232), '11,5232');
+  assert.equal(formatRate(11.5), '11,5');
+  const v = expenseValues(eur, { company });
+  assert.equal(v.report_amount, '581,92');
+  assert.equal(v.report_currency, 'SEK');
+  assert.equal(v.rate, '11,5232');
+  assert.equal(renderTemplate('{amount} {currency} = {report_amount} {report_currency}', v), '50,50 EUR = 581,92 SEK');
+  // Same currency: report fields mirror the expense.
+  const sek = expenseValues({ ...eur, currency: 'SEK', conversion: undefined, amount: 91 }, { company });
+  assert.deepEqual([sek.report_amount, sek.report_currency, sek.rate], ['91,00', 'SEK', '1']);
+  // A stale conversion (currency changed since) is ignored.
+  assert.equal(validConversion({ ...eur, currency: 'USD' }, company), null);
+  assert.equal(expenseValues({ ...eur, currency: 'USD' }, { company }).report_amount, '');
+  // CSV for all companies uses each row's company.
+  const { expensesCsv } = await import('../js/util.js');
+  const csv = expensesCsv([{ ...eur, companyId: 'c1' }], { companiesById: { c1: company } });
+  assert.match(csv.split('\r\n')[1], /;50,50;EUR;.*;581,92;SEK;11,5232$/);
+  // Company that reports in EUR: a SEK expense needs conversion.
+  assert.equal(needsConversion({ ...eur, currency: 'SEK' }, { reportCurrency: 'EUR' }), true);
 });

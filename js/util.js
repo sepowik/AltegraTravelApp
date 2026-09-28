@@ -187,6 +187,27 @@ export function tripTitle(trip) {
 }
 
 // Placeholder values for an expense, optionally with its trip and company.
+// True when the expense must also be shown in the company's report currency.
+export function needsConversion(expense, company) {
+  const report = company?.reportCurrency;
+  return !!(report && expense?.currency && expense.currency !== report);
+}
+
+export const convertAmount = (amount, rate) => (Number.isFinite(amount) && Number.isFinite(rate) ? Math.round(amount * rate * 100) / 100 : NaN);
+
+// Exchange rate with up to 4 decimals, trailing zeros dropped: 11,5230 → 11,523.
+export function formatRate(rate, decimalSep = ',') {
+  if (!Number.isFinite(rate)) return '';
+  return String(Number(rate.toFixed(4))).replace('.', decimalSep);
+}
+
+// The stored conversion if it still matches the expense's currency and the company's report currency.
+export function validConversion(expense, company) {
+  const c = expense?.conversion;
+  if (!needsConversion(expense, company) || !c) return null;
+  return c.currency === company.reportCurrency && c.from === expense.currency && Number.isFinite(c.amount) ? c : null;
+}
+
 export function expenseValues(expense, { trip, company } = {}) {
   const sep = company?.decimalSep ?? ',';
   const mapped = company?.categoryMap?.[expense.category];
@@ -201,7 +222,21 @@ export function expenseValues(expense, { trip, company } = {}) {
     vat: Number.isFinite(expense.vat) ? formatAmount(expense.vat, sep) : '',
     payment: paymentLabel(expense.payment),
     company: company?.name || '',
+    // In the company's report currency; same as amount/currency when no conversion is needed.
+    ...reportValues(expense, company, sep),
     ...(trip ? tripValues(trip, company) : {}),
+  };
+}
+
+function reportValues(expense, company, sep) {
+  if (!needsConversion(expense, company)) {
+    return { report_amount: formatAmount(expense.amount, sep), report_currency: expense.currency || '', rate: expense.currency ? '1' : '' };
+  }
+  const c = validConversion(expense, company);
+  return {
+    report_amount: c ? formatAmount(c.amount, sep) : '',
+    report_currency: company.reportCurrency,
+    rate: c ? formatRate(c.rate, sep) : '',
   };
 }
 
@@ -231,15 +266,17 @@ export const DEFAULT_EXPENSE_TEMPLATE = '{date}\\t{amount}\\t{currency}\\t{categ
 // The default trip template has labels, so it follows the selected language.
 export const defaultTripTemplate = () => t('tripTemplate');
 
-export const EXPENSE_PLACEHOLDERS = ['date', 'amount', 'currency', 'category', 'my_category', 'merchant', 'description', 'vat', 'payment', 'company', 'trip', 'purpose', 'destination'];
+export const EXPENSE_PLACEHOLDERS = ['date', 'amount', 'currency', 'report_amount', 'report_currency', 'rate', 'category', 'my_category', 'merchant', 'description', 'vat', 'payment', 'company', 'trip', 'purpose', 'destination'];
 export const TRIP_PLACEHOLDERS = ['trip', 'purpose', 'destination', 'start_date', 'start_time', 'start_place', 'end_date', 'end_time', 'end_place', 'transport', 'car_km', 'company'];
 
 // Builds CSV rows for a company export.
-export function expensesCsv(expenses, { tripsById = {}, company } = {}) {
+// With a company filter, that company's formats are used for every row; otherwise each
+// row uses its own company (category names, report currency).
+export function expensesCsv(expenses, { tripsById = {}, company, companiesById = {} } = {}) {
   const header = t('csvHeader').split(';');
   const rows = expenses.map((e) => {
-    const v = expenseValues(e, { trip: tripsById[e.tripId], company });
-    return [v.date, v.amount, v.currency, v.category, v.merchant, v.description, v.vat, v.trip || '', v.purpose || '', statusLabel(e.status)];
+    const v = expenseValues(e, { trip: tripsById[e.tripId], company: company || companiesById[e.companyId] });
+    return [v.date, v.amount, v.currency, v.category, v.merchant, v.description, v.vat, v.trip || '', v.purpose || '', statusLabel(e.status), v.report_amount, v.report_currency, v.rate];
   });
   return toCsv([header, ...rows], company?.csvSep || ';');
 }
