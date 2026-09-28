@@ -1,6 +1,7 @@
 // On-device receipt reading with Tesseract.js (bundled in vendor/tesseract).
 // The engine (~4 MB) and language data (~7 MB) load on first use only.
 import { parseReceiptText } from './receipt-parse.js';
+import { rotateImage } from './crop.js';
 
 const BASE = new URL('../vendor/tesseract/', import.meta.url).href;
 const LANGS = ['swe', 'eng', 'deu'];
@@ -30,8 +31,13 @@ function getWorker() {
   return workerPromise;
 }
 
+// Below this mean word confidence the photo may be upside down.
+const LOW_CONFIDENCE = 60;
+
 // progress(stage, fraction): stage is 'loading' (first-time download/start) or 'reading'.
-export async function readReceipt(blob, progress) {
+// With tryFlip, a poorly read photo is also read turned 180°; if that reads clearly better,
+// the result has `rotated` (the turned image Blob) and its fields.
+export async function readReceipt(blob, progress, { tryFlip = false } = {}) {
   onProgress = (m) => {
     if (typeof m.progress !== 'number') return;
     progress?.(m.status === 'recognizing text' ? 'reading' : 'loading', m.progress);
@@ -39,7 +45,19 @@ export async function readReceipt(blob, progress) {
   try {
     const worker = await getWorker();
     const { data } = await worker.recognize(blob);
-    return { text: data.text, confidence: data.confidence, fields: parseReceiptText(data.text) };
+    const result = { text: data.text, confidence: data.confidence, fields: parseReceiptText(data.text) };
+    if (!tryFlip || data.confidence >= LOW_CONFIDENCE) return result;
+    // Poorly read: try upside down first (most common), then the two quarter turns, and
+    // keep the orientation that reads clearly best.
+    let best = null;
+    for (const deg of [180, 90, 270]) {
+      const turned = await rotateImage(blob, deg);
+      const { data: d } = await worker.recognize(turned);
+      if (!best || d.confidence > best.confidence) best = { confidence: d.confidence, text: d.text, rotated: turned };
+      if (d.confidence >= LOW_CONFIDENCE) break;
+    }
+    if (best.confidence < data.confidence + 10) return result;
+    return { text: best.text, confidence: best.confidence, fields: parseReceiptText(best.text), rotated: best.rotated };
   } finally {
     onProgress = null;
   }

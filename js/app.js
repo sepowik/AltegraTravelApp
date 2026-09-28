@@ -778,14 +778,23 @@ async function expenseFormView(id, query) {
         return filled;
       };
       let ocrRun = 0;
-      const runOcr = async (blob) => {
+      const runOcr = async (receipt, { tryFlip = false } = {}) => {
         const run = ++ocrRun;
         showStatus(t('ocrLoading', { pct: 0 }), 'busy');
         try {
-          const { fields } = await readReceipt(blob, (stage, f) => {
+          const { fields, rotated } = await readReceipt(receipt.blob, (stage, f) => {
             if (run === ocrRun) showStatus(t(stage === 'reading' ? 'ocrReading' : 'ocrLoading', { pct: Math.round(f * 100) }), 'busy');
-          });
+          }, { tryFlip });
           if (run !== ocrRun || !form.isConnected) return;
+          if (rotated) {
+            // The photo was upside down: store and show it turned the right way.
+            const r = await replaceReceipt(receipt.id, new File([rotated], receipt.name, { type: 'image/jpeg' }), { cropped: receipt.cropped, turned: true });
+            const i = newReceipts.findIndex((x) => x.id === r.id);
+            if (i >= 0) newReceipts[i] = r;
+            thumbs.querySelector(`[data-rid="${r.id}"]`)?.insertAdjacentHTML('afterend', thumb(r));
+            thumbs.querySelector(`[data-rid="${r.id}"]`)?.remove();
+            toast(t('turnedNote'));
+          }
           const filled = fillFromReceipt(fields);
           showStatus(filled.length ? t('ocrFilled', { fields: filled.join(', ') }) : t('ocrNothing'), filled.length ? 'ok' : 'warn');
           if (filled.length) updateFx();
@@ -823,7 +832,8 @@ async function expenseFormView(id, query) {
           cropStatus.hidden = !added.some((r) => r.cropped);
           if (!ocrEnabled || !added.length) return;
           const image = added.find((r) => r.type.startsWith('image/'));
-          if (image) runOcr(image.blob);
+          if (added.some((r) => r.turned)) toast(t('turnedNote'));
+          if (image) runOcr(image, { tryFlip: crop });
           else showStatus(t('ocrPdf'), 'warn');
         };
       });
@@ -967,7 +977,18 @@ async function expenseView(id) {
           if (!input.files.length) return;
           const ids = [];
           const crop = input.hasAttribute('data-camera') && (await db.getSetting('autoCrop', true));
-          for (const f of input.files) ids.push((await saveReceipt(f, { crop })).id);
+          const saved = [];
+          for (const f of input.files) saved.push(await saveReceipt(f, { crop }));
+          ids.push(...saved.map((r) => r.id));
+          // Camera photos: also turn an upside-down receipt the right way (needs receipt reading).
+          if (crop && (await db.getSetting('receiptOcr', true))) {
+            for (const r of saved.filter((x) => x.type.startsWith('image/'))) {
+              try {
+                const { rotated } = await readReceipt(r.blob, null, { tryFlip: true });
+                if (rotated) await replaceReceipt(r.id, new File([rotated], r.name, { type: 'image/jpeg' }), { cropped: r.cropped, turned: true });
+              } catch { /* keep as is */ }
+            }
+          }
           const fresh = await db.get('expenses', e.id);
           await db.put('expenses', { ...fresh, receiptIds: [...(fresh.receiptIds || []), ...ids], updatedAt: Date.now() });
           toast(t('receiptAdded', { n: ids.length }));

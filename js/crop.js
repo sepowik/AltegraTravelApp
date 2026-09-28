@@ -114,3 +114,92 @@ export async function cropReceipt(file) {
   const blob = await new Promise((r) => out.toBlob(r, 'image/jpeg', 0.9));
   return blob ? { blob, box, width: bmp.width, height: bmp.height } : null;
 }
+
+/*
+ * Which way the lines of text run in a greyscale image of a (cropped) receipt:
+ * 'horizontal' (readable or upside down), 'vertical' (photo is sideways) or null when
+ * unclear. Lines of text leave blank rows between them, so the profile of dark pixels
+ * per row is far more uneven than per column; for sideways text it is the other way round.
+ * Only the inner part is used so the margin around the paper does not count.
+ */
+export function textDirection(gray, w, h) {
+  const x0 = Math.round(w * 0.1); const x1 = Math.round(w * 0.9);
+  const y0 = Math.round(h * 0.1); const y1 = Math.round(h * 0.9);
+  const iw = x1 - x0; const ih = y1 - y0;
+  if (iw < 20 || ih < 20) return null;
+  const inner = new Uint8Array(iw * ih);
+  for (let y = 0; y < ih; y++) for (let x = 0; x < iw; x++) inner[y * iw + x] = gray[(y + y0) * w + x + x0];
+  const t = otsuThreshold(inner);
+  const xs = []; const ys = [];
+  for (let y = 0; y < ih; y++) for (let x = 0; x < iw; x++) if (inner[y * iw + x] <= t) { xs.push(x); ys.push(y); }
+  const dark = xs.length;
+  // Text covers only a few percent of the paper; much more means it is not paper with text.
+  if (dark < iw * ih * 0.005 || dark > iw * ih * 0.5) return null;
+  // Peakiness of the dark-pixel profile projected across direction `a` (radians): sum of
+  // squares relative to an even spread. Receipts are rarely perfectly straight in a photo,
+  // so the best value over small tilts (±10°) is used for both directions.
+  const cx = iw / 2; const cy = ih / 2;
+  const peakAt = (a) => {
+    const c = Math.cos(a); const s = Math.sin(a);
+    const bins = new Map();
+    for (let k = 0; k < dark; k++) {
+      const p = Math.round((ys[k] - cy) * c - (xs[k] - cx) * s);
+      bins.set(p, (bins.get(p) || 0) + 1);
+    }
+    let sq = 0; let lo = Infinity; let hi = -Infinity;
+    for (const [p, v] of bins) { sq += v * v; if (p < lo) lo = p; if (p > hi) hi = p; }
+    return (sq * (hi - lo + 1)) / (dark * dark);
+  };
+  let rows = 0; let cols = 0;
+  for (let deg = -10; deg <= 10; deg += 2) {
+    const a = (deg * Math.PI) / 180;
+    rows = Math.max(rows, peakAt(a));
+    cols = Math.max(cols, peakAt(a + Math.PI / 2));
+  }
+  const r = rows / cols;
+  if (r > 1.2) return 'horizontal';
+  if (r < 0.83) return 'vertical';
+  return null;
+}
+
+// Rotates an image Blob clockwise by 90, 180 or 270 degrees; resolves a JPEG Blob.
+export async function rotateImage(blob, degrees) {
+  const bmp = await createImageBitmap(blob);
+  const quarter = degrees % 180 !== 0;
+  const c = document.createElement('canvas');
+  c.width = quarter ? bmp.height : bmp.width;
+  c.height = quarter ? bmp.width : bmp.height;
+  const ctx = c.getContext('2d');
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.rotate((degrees * Math.PI) / 180);
+  ctx.drawImage(bmp, -bmp.width / 2, -bmp.height / 2);
+  return new Promise((r) => c.toBlob(r, 'image/jpeg', 0.9));
+}
+
+// Greyscale copy of an image Blob, scaled so its longer side is at most `side` px.
+export async function grayscale(blob, side = ANALYSIS_SIDE) {
+  const bmp = await createImageBitmap(blob);
+  const scale = Math.min(1, side / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width * scale));
+  const h = Math.max(1, Math.round(bmp.height * scale));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bmp, 0, 0, w, h);
+  const { data } = ctx.getImageData(0, 0, w, h);
+  const gray = new Uint8Array(w * h);
+  for (let i = 0, j = 0; i < gray.length; i++, j += 4) gray[i] = (data[j] * 77 + data[j + 1] * 150 + data[j + 2] * 29) >> 8;
+  return { gray, w, h };
+}
+
+// Turns a receipt photo a quarter turn when its text runs up and down. Resolves the
+// rotated Blob, or null when it already looks right or the direction is unclear.
+// (Upside-down text is caught later by comparing OCR confidence, see ocr.js.)
+export async function uprightQuarter(blob) {
+  try {
+    const { gray, w, h } = await grayscale(blob, 480);
+    return textDirection(gray, w, h) === 'vertical' ? await rotateImage(blob, 90) : null;
+  } catch {
+    return null;
+  }
+}

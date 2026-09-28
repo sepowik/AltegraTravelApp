@@ -1,7 +1,7 @@
 // Receipt files: photos are downscaled before storing, PDFs are stored as-is.
 import * as db from './db.js';
 import { uid } from './util.js';
-import { cropReceipt } from './crop.js';
+import { cropReceipt, uprightQuarter } from './crop.js';
 
 const MAX_SIDE = 2000;
 
@@ -21,12 +21,16 @@ async function downscale(file) {
   }
 }
 
-async function storedReceipt(file, id, { crop = false } = {}) {
+async function storedReceipt(file, id, { crop = false, flags = {} } = {}) {
   const cropped = crop ? await cropReceipt(file) : null;
-  const blob = await downscale(cropped ? new File([cropped.blob], file.name || 'receipt.jpg', { type: 'image/jpeg' }) : file);
+  let source = cropped ? cropped.blob : file;
+  // Photos whose text runs up and down are turned a quarter (camera photos only, like cropping).
+  const turned = crop && file.type?.startsWith('image/') ? await uprightQuarter(source) : null;
+  if (turned) source = turned;
+  const blob = await downscale(source === file ? file : new File([source], file.name || 'receipt.jpg', { type: 'image/jpeg' }));
   const ext = blob.type === 'image/jpeg' ? 'jpg' : ((file.name || '').split('.').pop() || 'bin');
   const base = (file.name || 'receipt').replace(/\.[^.]+$/, '');
-  const receipt = { id, name: `${base}.${ext}`, type: blob.type || file.type, blob, addedAt: Date.now(), cropped: !!cropped };
+  const receipt = { id, name: `${base}.${ext}`, type: blob.type || file.type, blob, addedAt: Date.now(), cropped: !!cropped, turned: !!turned, ...flags };
   await db.put('receipts', receipt);
   return receipt;
 }
@@ -36,12 +40,13 @@ async function storedReceipt(file, id, { crop = false } = {}) {
 // .original (not stored) so the crop can be undone with replaceReceipt.
 export async function saveReceipt(file, options) {
   const receipt = await storedReceipt(file, uid(), options);
-  return receipt.cropped ? Object.assign(receipt, { original: file }) : receipt;
+  return receipt.cropped || receipt.turned ? Object.assign(receipt, { original: file }) : receipt;
 }
 
-// Replaces a stored receipt's file, keeping its id (used to undo a crop).
-export async function replaceReceipt(id, file) {
-  return storedReceipt(file, id);
+// Replaces a stored receipt's file, keeping its id (used to undo a crop, or to store a
+// photo turned the right way; `flags` such as { cropped: true } are kept on the record).
+export async function replaceReceipt(id, file, flags) {
+  return storedReceipt(file, id, { flags });
 }
 
 export function receiptFile(receipt, name) {

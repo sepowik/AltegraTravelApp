@@ -55,3 +55,21 @@ test('margin grows the box but stays inside the image', () => {
   assert.deepEqual(withMargin({ x: 90, y: 40, w: 120, h: 320 }, 300, 400), { x: 80, y: 30, w: 140, h: 340 });
   assert.deepEqual(withMargin({ x: 2, y: 3, w: 100, h: 390 }, 300, 400), { x: 0, y: 0, w: 114, h: 400 });
 });
+
+test('textDirection tells horizontal from sideways text', async () => {
+  const { textDirection } = await import('../js/crop.js');
+  const W = 240; const H = 320;
+  // Paper with lines of "words": short dark runs with gaps, lines 14 px apart.
+  const upright = image(W, H, 235, (set) => {
+    for (let y = 30; y < H - 30; y += 14) {
+      for (let x = 20; x < W - 20; x += 11) if ((x * 7 + y) % 5) rect(set, x, y, 8, 7, 30);
+    }
+  });
+  assert.equal(textDirection(upright, W, H), 'horizontal');
+  // The same page turned a quarter: transpose.
+  const side = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) side[x * H + y] = upright[y * W + x];
+  assert.equal(textDirection(side, H, W), 'vertical');
+  // Blank paper: no answer.
+  assert.equal(textDirection(new Uint8Array(W * H).fill(235), W, H), null);
+});
