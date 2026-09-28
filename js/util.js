@@ -22,7 +22,20 @@ export const CATEGORIES = [
   'Fuel', 'Rental car', 'Mileage', 'Toll', 'Conference', 'Other',
 ];
 
-export const CURRENCIES = ['SEK', 'EUR', 'USD', 'NOK', 'DKK', 'GBP', 'CHF', 'PLN', 'INR'];
+// Offered in the currency drop-down; any other ISO code can be typed in.
+export const CURRENCIES = ['SEK', 'EUR', 'NOK', 'DKK', 'USD', 'GBP', 'CHF', 'PLN', 'ISK', 'CZK', 'HUF', 'INR', 'JPY', 'CNY', 'AUD', 'CAD', 'SGD', 'AED', 'TRY', 'THB'];
+
+export const isCurrencyCode = (c) => /^[A-Z]{3}$/.test(String(c || ''));
+
+// "SEK · Swedish krona" in the given UI language, or just the code if the browser lacks names.
+export function currencyLabel(code, lang = 'en') {
+  try {
+    const name = new Intl.DisplayNames([lang], { type: 'currency' }).of(code);
+    return name && name !== code ? `${code} · ${name}` : code;
+  } catch {
+    return code;
+  }
+}
 
 export const STATUSES = [{ id: 'todo' }, { id: 'reported' }, { id: 'reimbursed' }].map(withLabel('status'));
 

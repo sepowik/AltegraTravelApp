@@ -6,7 +6,7 @@ import { pickCar, applyCarChoice, currentCar, carLabel, carsView, carView, place
 import { esc, options, toast, copyText, sheet, confirmSheet, objectUrl, revokeUrls } from './ui.js';
 import { t, setLanguage, getLanguage, LANGUAGES, DEFAULT_LANGUAGE } from './i18n.js';
 import {
-  TRANSPORTS, CATEGORIES, CURRENCIES, STATUSES, PAYMENTS, transportById, categoryLabel, paymentLabel,
+  TRANSPORTS, CATEGORIES, CURRENCIES, isCurrencyCode, currencyLabel, STATUSES, PAYMENTS, transportById, categoryLabel, paymentLabel,
   uid, isoDate, isoTime, dateTime, toLocalInput, formatDuration, parseAmount, formatAmount, formatKm,
   tripLegs, ownCarKm, tripStart, tripEnd, placeLabel, tripTitle, expenseValues, tripValues, renderTemplate,
   expensesCsv, DEFAULT_EXPENSE_TEMPLATE, defaultTripTemplate, EXPENSE_PLACEHOLDERS, TRIP_PLACEHOLDERS,
@@ -607,9 +607,12 @@ async function expenseFormView(id, query) {
         <div class="ocr-status" id="ocr-status" role="status" hidden></div>
         <div class="grid2">
           <label>${esc(t('amount'))}<input name="amount" inputmode="decimal" required value="${Number.isFinite(e.amount) ? formatAmount(e.amount) : ''}" placeholder="0,00"></label>
-          <label>${esc(t('currency'))}<input name="currency" list="currencies" value="${esc(e.currency)}" maxlength="3" required></label>
+          <label>${esc(t('currency'))}
+            <input type="hidden" name="currency" value="${esc(e.currency)}">
+            <select name="currencyPick" data-field="currency">${options([...CURRENCIES, '__other'], CURRENCIES.includes(e.currency) ? e.currency : '__other', { label: (c) => (c === '__other' ? t('otherCurrency') : currencyLabel(c, getLanguage())) })}</select>
+            <input name="currencyOther" data-field="currency" maxlength="3" autocapitalize="characters" autocomplete="off" placeholder="${esc(t('currencyCodePh'))}" value="${CURRENCIES.includes(e.currency) ? '' : esc(e.currency)}"${CURRENCIES.includes(e.currency) ? ' hidden' : ''}>
+          </label>
         </div>
-        <datalist id="currencies">${CURRENCIES.map((c) => `<option value="${c}">`).join('')}</datalist>
         <div class="grid2">
           <label>${esc(t('date'))}<input name="date" type="date" required value="${esc(e.date)}"></label>
           <label>${esc(t('category'))}<select name="category" required>${options(CATEGORIES, e.category, { label: categoryLabel, empty: t('choose') })}</select></label>
@@ -634,8 +637,34 @@ async function expenseFormView(id, query) {
       const touched = new Set();
       form.addEventListener('input', (ev) => {
         if (!ev.target.name) return;
-        touched.add(ev.target.name);
+        touched.add(ev.target.dataset.field || ev.target.name);
         ev.target.classList.remove('autofilled');
+      });
+      // Currency: a drop-down of common currencies plus "Other…" for typing any ISO code.
+      // The hidden "currency" input holds the value that is saved.
+      const pick = form.currencyPick;
+      const other = form.currencyOther;
+      const setCurrency = (code) => {
+        form.currency.value = code;
+        const listed = CURRENCIES.includes(code);
+        pick.value = listed ? code : '__other';
+        other.hidden = listed;
+        if (!listed) other.value = code;
+      };
+      pick.addEventListener('change', () => {
+        if (pick.value === '__other') {
+          other.hidden = false;
+          other.value = '';
+          form.currency.value = '';
+          other.focus();
+        } else {
+          other.hidden = true;
+          form.currency.value = pick.value;
+        }
+      });
+      other.addEventListener('input', () => {
+        other.value = other.value.toUpperCase().replace(/[^A-Z]/g, '');
+        form.currency.value = other.value;
       });
       const showStatus = (msg, kind) => {
         status.hidden = false;
@@ -659,8 +688,13 @@ async function expenseFormView(id, query) {
           const replaceable = el.value === '' || (!existing && (name === 'date' || name === 'currency'));
           if (touched.has(name) || !replaceable) continue;
           const value = fmt(fields[name]);
-          if (el.value !== value) el.value = value;
-          el.classList.add('autofilled');
+          if (name === 'currency') {
+            setCurrency(value);
+            pick.classList.add('autofilled');
+          } else {
+            if (el.value !== value) el.value = value;
+            el.classList.add('autofilled');
+          }
           filled.push(t(labelKey));
         }
         return filled;
@@ -709,9 +743,15 @@ async function expenseFormView(id, query) {
       };
       form.onsubmit = async (ev) => {
         ev.preventDefault();
-        const fd = Object.fromEntries(new FormData(form));
+        const { currencyPick, currencyOther, ...fd } = Object.fromEntries(new FormData(form));
         const amount = parseAmount(fd.amount);
         if (!Number.isFinite(amount)) return toast(t('invalidAmount'));
+        if (!isCurrencyCode(fd.currency.trim().toUpperCase())) {
+          other.hidden = false;
+          pick.value = '__other';
+          other.focus();
+          return toast(t('invalidCurrency'));
+        }
         const vat = parseAmount(fd.vat);
         const receiptIds = [...(e.receiptIds || []), ...newReceipts.map((r) => r.id)].filter((rid) => !removed.has(rid));
         for (const rid of removed) await db.remove('receipts', rid);

@@ -76,3 +76,14 @@ test('expenseValues maps categories per company', () => {
   const csv = expensesCsv([e], { tripsById: { t1: trip }, company });
   assert.match(csv.split('\r\n')[1], /^2026-09-21;389,00;SEK;Local transport;Taxi Sthlm;Airport;;Stockholm;Customer meeting;To report$/);
 });
+
+test('currency codes and labels', async () => {
+  const { isCurrencyCode, currencyLabel, CURRENCIES } = await import('../js/util.js');
+  assert.ok(CURRENCIES.includes('SEK') && CURRENCIES[0] === 'SEK');
+  assert.equal(isCurrencyCode('JPY'), true);
+  assert.equal(isCurrencyCode('jp'), false);
+  assert.equal(isCurrencyCode(''), false);
+  assert.match(currencyLabel('SEK', 'en'), /^SEK · Swedish krona$/i);
+  assert.match(currencyLabel('SEK', 'sv'), /^SEK · svensk krona$/i);
+  assert.equal(currencyLabel('XYZ', 'en').startsWith('XYZ'), true);
+});

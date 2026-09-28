@@ -189,6 +189,9 @@ const en = {
   noTrip: 'No trip',
   status: 'Status',
   invalidAmount: 'Enter a valid amount',
+  otherCurrency: 'Other…',
+  currencyCodePh: 'Code, e.g. JPY',
+  invalidCurrency: 'Enter a 3-letter currency code, e.g. JPY.',
 
   // expense view
   copyAll: '⧉ Copy all',
@@ -521,6 +524,9 @@ const sv = {
   noTrip: 'Ingen resa',
   status: 'Status',
   invalidAmount: 'Ange ett giltigt belopp',
+  otherCurrency: 'Annan…',
+  currencyCodePh: 'Kod, t.ex. JPY',
+  invalidCurrency: 'Ange en valutakod med tre bokstäver, t.ex. JPY.',
 
   copyAll: '⧉ Kopiera allt',
   copyAllFormat: '⧉ Kopiera allt ({company}-format)',
@@ -848,6 +854,9 @@ const de = {
   noTrip: 'Keine Reise',
   status: 'Status',
   invalidAmount: 'Bitte einen gültigen Betrag eingeben',
+  otherCurrency: 'Andere…',
+  currencyCodePh: 'Code, z. B. JPY',
+  invalidCurrency: 'Bitte einen dreistelligen Währungscode eingeben, z. B. JPY.',
 
   copyAll: '⧉ Alles kopieren',
   copyAllFormat: '⧉ Alles kopieren (Format {company})',
@@ -1175,6 +1184,9 @@ const es = {
   noTrip: 'Sin viaje',
   status: 'Estado',
   invalidAmount: 'Introduce un importe válido',
+  otherCurrency: 'Otra…',
+  currencyCodePh: 'Código, p. ej. JPY',
+  invalidCurrency: 'Introduce un código de moneda de tres letras, p. ej. JPY.',
 
   copyAll: '⧉ Copiar todo',
   copyAllFormat: '⧉ Copiar todo (formato {company})',
@@ -1502,6 +1514,9 @@ const hi = {
   noTrip: 'कोई यात्रा नहीं',
   status: 'स्थिति',
   invalidAmount: 'मान्य राशि दर्ज करें',
+  otherCurrency: 'अन्य…',
+  currencyCodePh: 'कोड, जैसे JPY',
+  invalidCurrency: 'तीन अक्षरों का मुद्रा कोड दर्ज करें, जैसे JPY।',
 
   copyAll: '⧉ सब कॉपी करें',
   copyAllFormat: '⧉ सब कॉपी करें ({company} फ़ॉर्मेट)',
@@ -1829,6 +1844,9 @@ const ta = {
   noTrip: 'பயணம் இல்லை',
   status: 'நிலை',
   invalidAmount: 'சரியான தொகையை உள்ளிடவும்',
+  otherCurrency: 'மற்றவை…',
+  currencyCodePh: 'குறியீடு, எ.கா. JPY',
+  invalidCurrency: 'மூன்றெழுத்து நாணயக் குறியீட்டை உள்ளிடவும், எ.கா. JPY.',
 
   copyAll: '⧉ அனைத்தையும் நகலெடு',
   copyAllFormat: '⧉ அனைத்தையும் நகலெடு ({company} வடிவம்)',
