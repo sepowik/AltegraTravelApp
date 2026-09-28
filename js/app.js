@@ -162,6 +162,16 @@ function copyRow(label, value, copyLabel) {
   </button>`;
 }
 
+// Three ways to add a receipt: the camera, the phone's photo gallery, or any file (e.g. a PDF
+// from e-mail or Downloads). Each is a file input inside a label, marked data-add.
+function receiptButtons() {
+  return `<div class="receipt-btns">
+    <label class="btn primary"><span class="rb-icon">📷</span>${esc(t('takePhoto'))}<input type="file" accept="image/*" capture="environment" hidden data-add></label>
+    <label class="btn"><span class="rb-icon">🖼️</span>${esc(t('fromGallery'))}<input type="file" accept="image/*" multiple hidden data-add></label>
+    <label class="btn"><span class="rb-icon">📎</span>${esc(t('chooseFile'))}<input type="file" accept="application/pdf,image/*" multiple hidden data-add></label>
+  </div>`;
+}
+
 const copyAction = (el) => copyText(el.dataset.value, t('copied', { what: el.dataset.label }));
 
 // ---------- trip actions: start / change transport / end ----------
@@ -600,10 +610,7 @@ async function expenseFormView(id, query) {
     title: existing ? t('editExpense') : t('newExpense'),
     html: `
       <form id="expense-form" class="card" autocomplete="off">
-        <div class="receipt-btns">
-          <label class="btn primary">${esc(t('photo'))}<input type="file" accept="image/*" capture="environment" hidden data-add></label>
-          <label class="btn">${esc(t('file'))}<input type="file" accept="image/*,application/pdf" multiple hidden data-add></label>
-        </div>
+        ${receiptButtons()}
         <div class="thumbs" id="thumbs">${receipts.map(thumb).join('')}</div>
         <div class="ocr-status" id="ocr-status" role="status" hidden></div>
         <div class="grid2">
@@ -898,6 +905,7 @@ async function expenseView(id) {
           ? `<a href="${objectUrl(r.blob)}" target="_blank" class="thumb"><img src="${objectUrl(r.blob)}" alt="${esc(t('receipt', { n: 1 }))}"></a>`
           : `<a href="${objectUrl(r.blob)}" target="_blank" class="thumb"><span class="pdf">PDF</span></a>`).join('')}</div>
         <button class="link small" data-action="save">${esc(t('saveReceipt'))}</button></section>` : `<p class="muted small center">${esc(t('noReceipt'))}</p>`}
+      <section class="add-receipt"><h3>${esc(t('addReceipt'))}</h3>${receiptButtons()}</section>
       ${e.placeId ? `<button class="btn block" data-action="rateplace">${place?.rating ? `${'★'.repeat(place.rating)}${'☆'.repeat(5 - place.rating)} · ` : ''}${esc(t('rateTitle', { name: e.merchant || place?.name || '' }))}</button>` : ''}
       ${trip ? `<p class="center"><a class="link" href="#/trip/${trip.id}">${esc(t('tripLink', { trip: tripTitle(trip) }))}</a></p>` : ''}
       <div class="grid2"><a class="btn" href="#/expense/${e.id}/edit">${esc(t('edit'))}</a><button class="btn danger" data-action="delete">${esc(t('delete'))}</button></div>
@@ -933,6 +941,19 @@ async function expenseView(id) {
         await db.deleteExpense(e);
         history.back();
       },
+    },
+    bind(root) {
+      root.querySelectorAll('.add-receipt [data-add]').forEach((input) => {
+        input.onchange = async () => {
+          if (!input.files.length) return;
+          const ids = [];
+          for (const f of input.files) ids.push((await saveReceipt(f)).id);
+          const fresh = await db.get('expenses', e.id);
+          await db.put('expenses', { ...fresh, receiptIds: [...(fresh.receiptIds || []), ...ids], updatedAt: Date.now() });
+          toast(t('receiptAdded', { n: ids.length }));
+          render();
+        };
+      });
     },
   };
 }

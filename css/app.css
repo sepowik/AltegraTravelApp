@@ -178,8 +178,11 @@ input.autofilled, select.autofilled { border-color: var(--live); box-shadow: ins
 .inline.num { width: 5.5rem; }
 .km { display: inline-flex; align-items: center; gap: 4px; }
 
-.receipt-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.receipt-btns label { margin: 0; color: inherit; font-size: 1rem; }
+.receipt-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.receipt-btns label { margin: 0; color: inherit; font-size: 0.85rem; flex-direction: column; gap: 2px; padding: 8px 4px; line-height: 1.2; min-height: 64px; }
+.receipt-btns label.primary { color: var(--primary-text); }
+.rb-icon { font-size: 1.4rem; line-height: 1; }
+.add-receipt h3 { margin-top: 18px; }
 .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .thumb { position: relative; width: 72px; height: 72px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--accent); display: flex; align-items: center; justify-content: center; }
 .thumbs.large .thumb { width: 140px; height: 180px; }
