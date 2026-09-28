@@ -1,6 +1,7 @@
 // Receipt files: photos are downscaled before storing, PDFs are stored as-is.
 import * as db from './db.js';
 import { uid } from './util.js';
+import { cropReceipt } from './crop.js';
 
 const MAX_SIDE = 2000;
 
@@ -20,13 +21,27 @@ async function downscale(file) {
   }
 }
 
-export async function saveReceipt(file) {
-  const blob = await downscale(file);
-  const ext = blob.type === 'image/jpeg' ? 'jpg' : (file.name.split('.').pop() || 'bin');
+async function storedReceipt(file, id, { crop = false } = {}) {
+  const cropped = crop ? await cropReceipt(file) : null;
+  const blob = await downscale(cropped ? new File([cropped.blob], file.name || 'receipt.jpg', { type: 'image/jpeg' }) : file);
+  const ext = blob.type === 'image/jpeg' ? 'jpg' : ((file.name || '').split('.').pop() || 'bin');
   const base = (file.name || 'receipt').replace(/\.[^.]+$/, '');
-  const receipt = { id: uid(), name: `${base}.${ext}`, type: blob.type || file.type, blob, addedAt: Date.now() };
+  const receipt = { id, name: `${base}.${ext}`, type: blob.type || file.type, blob, addedAt: Date.now(), cropped: !!cropped };
   await db.put('receipts', receipt);
   return receipt;
+}
+
+// Stores a receipt file. With crop: true a photo is cut to the receipt (see crop.js); the
+// returned receipt then has cropped: true, and the untouched photo is available as
+// .original (not stored) so the crop can be undone with replaceReceipt.
+export async function saveReceipt(file, options) {
+  const receipt = await storedReceipt(file, uid(), options);
+  return receipt.cropped ? Object.assign(receipt, { original: file }) : receipt;
+}
+
+// Replaces a stored receipt's file, keeping its id (used to undo a crop).
+export async function replaceReceipt(id, file) {
+  return storedReceipt(file, id);
 }
 
 export function receiptFile(receipt, name) {

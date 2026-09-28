@@ -1,6 +1,6 @@
 import * as db from './db.js';
 import * as geo from './geo.js';
-import { saveReceipt, shareReceipts, download } from './receipts.js';
+import { saveReceipt, replaceReceipt, shareReceipts, download } from './receipts.js';
 import { readReceipt } from './ocr.js';
 import { getRate } from './fx.js';
 import { pickCar, applyCarChoice, currentCar, carLabel, carsView, carView, placesView, chargeView, rateSheet } from './ev.js';
@@ -166,7 +166,7 @@ function copyRow(label, value, copyLabel) {
 // from e-mail or Downloads). Each is a file input inside a label, marked data-add.
 function receiptButtons() {
   return `<div class="receipt-btns">
-    <label class="btn primary"><span class="rb-icon">📷</span>${esc(t('takePhoto'))}<input type="file" accept="image/*" capture="environment" hidden data-add></label>
+    <label class="btn primary"><span class="rb-icon">📷</span>${esc(t('takePhoto'))}<input type="file" accept="image/*" capture="environment" hidden data-add data-camera></label>
     <label class="btn"><span class="rb-icon">🖼️</span>${esc(t('fromGallery'))}<input type="file" accept="image/*" multiple hidden data-add></label>
     <label class="btn"><span class="rb-icon">📎</span>${esc(t('chooseFile'))}<input type="file" accept="application/pdf,image/*" multiple hidden data-add></label>
   </div>`;
@@ -604,6 +604,7 @@ async function expenseFormView(id, query) {
   const newReceipts = [];
   const removed = new Set();
   const ocrEnabled = await db.getSetting('receiptOcr', true);
+  const cropEnabled = await db.getSetting('autoCrop', true);
   const thumb = (r) => `<div class="thumb" data-rid="${r.id}">${r.type.startsWith('image/') ? `<img src="${objectUrl(r.blob)}" alt="">` : `<span class="pdf">PDF</span>`}<button type="button" class="thumb-x" data-remove="${r.id}" aria-label="${esc(t('remove'))}">✕</button></div>`;
 
   return {
@@ -612,6 +613,7 @@ async function expenseFormView(id, query) {
       <form id="expense-form" class="card" autocomplete="off">
         ${receiptButtons()}
         <div class="thumbs" id="thumbs">${receipts.map(thumb).join('')}</div>
+        <div class="crop-status" id="crop-status" hidden><span>${esc(t('cropped'))}</span> <button type="button" class="link small" id="undo-crop">${esc(t('undoCrop'))}</button></div>
         <div class="ocr-status" id="ocr-status" role="status" hidden></div>
         <div class="grid2">
           <label>${esc(t('amount'))}<input name="amount" inputmode="decimal" required value="${Number.isFinite(e.amount) ? formatAmount(e.amount) : ''}" placeholder="0,00"></label>
@@ -792,16 +794,33 @@ async function expenseFormView(id, query) {
           if (run === ocrRun) showStatus(t('ocrFailed', { msg: err?.message || String(err) }), 'warn');
         }
       };
+      // Photos taken with the camera are cropped to the receipt; the crop can be undone.
+      const cropStatus = root.querySelector('#crop-status');
+      let lastCropped = null;
+      root.querySelector('#undo-crop').onclick = async () => {
+        if (!lastCropped) return;
+        const r = await replaceReceipt(lastCropped.id, lastCropped.original);
+        const i = newReceipts.findIndex((x) => x.id === r.id);
+        if (i >= 0) newReceipts[i] = r;
+        thumbs.querySelector(`[data-rid="${r.id}"]`)?.insertAdjacentHTML('afterend', thumb(r));
+        thumbs.querySelector(`[data-rid="${r.id}"]`)?.remove();
+        lastCropped = null;
+        cropStatus.hidden = true;
+        toast(t('cropUndone'));
+      };
       root.querySelectorAll('[data-add]').forEach((input) => {
         input.onchange = async () => {
           const added = [];
+          const crop = input.hasAttribute('data-camera') && cropEnabled;
           for (const f of input.files) {
-            const r = await saveReceipt(f);
+            const r = await saveReceipt(f, { crop });
             newReceipts.push(r);
             added.push(r);
             thumbs.insertAdjacentHTML('beforeend', thumb(r));
+            if (r.cropped) lastCropped = r;
           }
           input.value = '';
+          cropStatus.hidden = !added.some((r) => r.cropped);
           if (!ocrEnabled || !added.length) return;
           const image = added.find((r) => r.type.startsWith('image/'));
           if (image) runOcr(image.blob);
@@ -947,7 +966,8 @@ async function expenseView(id) {
         input.onchange = async () => {
           if (!input.files.length) return;
           const ids = [];
-          for (const f of input.files) ids.push((await saveReceipt(f)).id);
+          const crop = input.hasAttribute('data-camera') && (await db.getSetting('autoCrop', true));
+          for (const f of input.files) ids.push((await saveReceipt(f, { crop })).id);
           const fresh = await db.get('expenses', e.id);
           await db.put('expenses', { ...fresh, receiptIds: [...(fresh.receiptIds || []), ...ids], updatedAt: Date.now() });
           toast(t('receiptAdded', { n: ids.length }));
@@ -1036,6 +1056,7 @@ async function settingsView() {
   for (const s of ['trips', 'expenses', 'receipts']) counts[s] = (await db.all(s)).length;
   const lastBackup = await db.getSetting('lastBackup', null);
   const ocr = await db.getSetting('receiptOcr', true);
+  const autoCrop = await db.getSetting('autoCrop', true);
   return {
     title: t('nav.settings'),
     html: `
@@ -1048,6 +1069,8 @@ async function settingsView() {
       <section class="card">
         <label class="check"><input type="checkbox" id="ocr"${ocr ? ' checked' : ''}><span>${esc(t('receiptReading'))}</span></label>
         <p class="muted small">${esc(t('receiptReadingHint'))}</p>
+        <label class="check" style="margin-top:14px"><input type="checkbox" id="autocrop"${autoCrop ? ' checked' : ''}><span>${esc(t('autoCrop'))}</span></label>
+        <p class="muted small">${esc(t('autoCropHint'))}</p>
       </section>
       <section class="card">
         <label>${esc(t('mileageRate'))}<input id="rate" inputmode="decimal" value="${formatAmount(rate)}"></label>
@@ -1077,6 +1100,10 @@ async function settingsView() {
       root.querySelector('#language').onchange = async (ev) => {
         await applyLanguage(ev.target.value, { save: true });
         render();
+      };
+      root.querySelector('#autocrop').onchange = async (ev) => {
+        await db.setSetting('autoCrop', ev.target.checked);
+        toast(t('saved'));
       };
       root.querySelector('#ocr').onchange = async (ev) => {
         await db.setSetting('receiptOcr', ev.target.checked);

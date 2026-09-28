@@ -236,3 +236,5 @@ input.autofilled, select.autofilled { border-color: var(--live); box-shadow: ins
 .fx label { margin-top: 8px; }
 .fx-line { margin: 6px 0 0; }
 .fx-line .link { padding: 0 0 0 4px; }
+.crop-status { margin-top: 8px; font-size: 0.9rem; color: var(--live); }
+.crop-status .link { padding: 0 4px; }

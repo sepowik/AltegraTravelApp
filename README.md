@@ -21,7 +21,7 @@ You record each trip and expense once, then copy it into whichever company's exp
 
 **Expenses**
 - Amount, currency, date, category, merchant, description, VAT, payment method, company, trip, status.
-- Add receipts three ways: **Take photo** (camera), **From gallery** (photos already on the phone) or **File / PDF** (e.g. a PDF receipt from e-mail or Downloads). Photos are downscaled to save space. Receipts can also be added afterwards from the expense page (**Add receipt**), without opening Edit.
+- Add receipts three ways: **Take photo** (camera), **From gallery** (photos already on the phone) or **File / PDF** (e.g. a PDF receipt from e-mail or Downloads). Photos taken with the camera are **cropped automatically** to the receipt plus a small margin (on the phone; **Undo** keeps the whole photo, and it can be switched off in Settings). If the receipt can't be told apart from the background, e.g. a white receipt on a white table, the whole photo is kept. Photos are downscaled to save space. Receipts can also be added afterwards from the expense page (**Add receipt**), without opening Edit.
 - Expenses added during an active trip are linked to it automatically.
 - **Receipt reading**: after you take or pick a receipt photo, the app reads it on the phone (Tesseract OCR, Swedish, English and German) and fills in amount, date, merchant, VAT, currency and category. Only empty fields, or the default date and currency on a new expense, are filled in, and nothing you've typed is overwritten. Filled fields are outlined in green so you can check them. The reader (about 10 MB) downloads the first time and then works offline. It can be turned off in Settings. PDFs are not read.
 
@@ -77,6 +77,7 @@ npm test       # unit tests for the pure helpers (Node 20+)
 | `js/util.js` | Pure helpers: templates, CSV, legs/distances, formatting (unit tested) |
 | `js/db.js` | IndexedDB storage, backup export/import |
 | `js/geo.js` | GPS, reverse geocoding, road distance |
+| `js/crop.js` | Finds the receipt in a photo and crops to it (unit tested) |
 | `js/ocr.js`, `js/receipt-parse.js` | On-device receipt reading and the rules that pick out amount, date, VAT etc. (unit tested) |
 | `vendor/tesseract/` | Bundled OCR engine and language data, see its README |
 | `js/ev.js`, `js/charging.js` | Cars, charging stop planning (unit tested), places to eat and ratings |
