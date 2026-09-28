@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseReceiptText, amountsIn, findDate } from '../js/receipt-parse.js';
+import { parseReceiptText, amountsIn, findDate, findCurrency } from '../js/receipt-parse.js';
 
 const now = new Date(2026, 8, 25, 12).getTime();
 
@@ -129,6 +129,43 @@ Paid by UPI`;
   assert.equal(r.date, '2026-09-20');
   assert.equal(r.category, 'Taxi');
   assert.equal(r.vat, 21);
+});
+
+test('Swedish receipts are SEK even with Euro-looking text or OCR noise', () => {
+  // No currency marker at all, but a Mastercard/Eurocard line and Swedish words.
+  const ica = `ICA NÄRA FOLKUNGAGATAN
+Org.nr 556123-4567
+Kvitto 2026-09-27 17:02
+Mjölk 1,5 l            18,90
+Kaffe                  64,50
+Summa                  83,40
+Varav moms 12%          8,94
+Mastercard/Eurocard    83,40
+Tack för besöket`;
+  assert.equal(parseReceiptText(ica, { now }).currency, 'SEK');
+  // Stray € read by the OCR in a Swedish receipt that says kr at the total.
+  const noisy = `Pressbyrån Centralen
+Kaffe latte   € 42,00
+Totalt        42,00 kr
+Moms 12%       4,50
+Kortbetalning 42,00`;
+  assert.equal(parseReceiptText(noisy, { now }).currency, 'SEK');
+  // Merchant name containing "Euro" and SEK misread as 5EK.
+  const park = `EURO PARKING AB
+Parkering Lindholmen
+Att betala   120,00 5EK
+Varav moms    24,00`;
+  assert.equal(parseReceiptText(park, { now }).currency, 'SEK');
+  // "245:-" style.
+  assert.equal(findCurrency(['Lunch  245:-', 'Totalt 245:-'], 245), 'SEK');
+});
+
+test('foreign receipts keep their currency and weak evidence gives no currency', () => {
+  assert.equal(findCurrency(['Burger 12,50', 'Total 12,50 €'], 12.5), 'EUR');
+  assert.equal(findCurrency(['Taxi fare', 'TOTAL NOK 450,00', 'MVA 25%'], 450), 'NOK');
+  assert.equal(findCurrency(['Total $23.10'], 23.1), 'USD');
+  // A single unexplained € somewhere is not enough to change the default.
+  assert.equal(findCurrency(['Some shop', '€', 'Thank you']), null);
 });
 
 test('garbage gives an empty result', () => {

@@ -11,16 +11,27 @@ const TOTAL_WORDS = [
 const VAT_WORDS = ['moms', 'vat', 'mwst', 'mw.st', 'ust', 'mehrwertsteuer', 'tax', 'varav', 'iva', 'gst', 'cgst', 'sgst', 'igst'];
 const NOT_TOTAL_WORDS = ['netto', 'exkl', 'excl', 'subtotal', 'delsumma', 'zwischensumme', 'växel', 'vaxel', 'change', 'rückgeld', 'retur', 'rabatt', 'discount', 'tips', 'dricks', 'base imponible', 'cambio', 'propina', 'taxable value', 'round off'];
 
+// Currency markers. OCR often misreads SEK as 5EK/SFK and can turn a stray letter into €,
+// so markers are scored (see findCurrency) instead of first-match-wins.
 const CURRENCY_HINTS = [
-  ['EUR', /€|\beur\b|\beuro\b/i],
-  ['USD', /\$|\busd\b/i],
-  ['GBP', /£|\bgbp\b/i],
-  ['NOK', /\bnok\b/i],
-  ['DKK', /\bdkk\b/i],
-  ['CHF', /\bchf\b/i],
-  ['PLN', /\bpln\b|\bzł\b/i],
-  ['INR', /₹|\binr\b|\brs\.?\s?\d/i],
-  ['SEK', /\bsek\b|\bkr\b|\d:-|\bkronor\b/i],
+  ['SEK', /\b[S5][EF][KX]\b|\bkr\.?(?![\p{L}])|\d\s?:-|\bkronor\b/giu],
+  ['EUR', /€|\beur\b|\beuro\b/gi],
+  ['USD', /\$|\busd\b/gi],
+  ['GBP', /£|\bgbp\b/gi],
+  ['NOK', /\bnok\b/gi],
+  ['DKK', /\bdkk\b/gi],
+  ['CHF', /\bchf\b/gi],
+  ['PLN', /\bpln\b|\bzł\b/gi],
+  ['INR', /₹|\binr\b|\brs\.?\s?\d/gi],
+];
+
+// Words that show which country a receipt is from. "kr" is shared by SEK, NOK and DKK, and
+// a Swedish receipt often has no currency marker at all, so these tip the balance.
+const COUNTRY_HINTS = [
+  ['SEK', /\b(moms|varav moms|kvitto|totalt|att betala|kortbetalning|kontokort|bankkort|växel|org\.?\s?nr|tack för|kassör|summa kr)\b|\b\d{6}-\d{4}\b/giu],
+  ['EUR', /\b(mwst|ust|gesamtbetrag|summe|rechnung|iva|total a pagar|importe|tva|alv)\b/giu],
+  ['NOK', /\b(mva|å betale)\b/giu],
+  ['DKK', /\b(i alt|at betale)\b/giu],
 ];
 
 const CATEGORY_HINTS = [
@@ -152,9 +163,33 @@ export function findDate(text, now = Date.now()) {
   return candidates[0]?.[1] ?? null;
 }
 
-export function findCurrency(text) {
-  const hit = CURRENCY_HINTS.find(([, re]) => re.test(text));
-  return hit ? hit[0] : null;
+// Picks the currency with the strongest evidence: a marker next to the total counts most,
+// a marker next to any amount counts more than one elsewhere, and country words add
+// weight. Returns null when the evidence is too weak, so the form keeps its default.
+export function findCurrency(lines, total = null) {
+  if (typeof lines === 'string') lines = lines.split(/\r?\n/);
+  const score = {};
+  const add = (cur, n) => { score[cur] = (score[cur] || 0) + n; };
+  const allWords = TOTAL_WORDS.flat();
+  for (const line of lines) {
+    const amounts = amountsIn(line);
+    const isTotal = hasWord(line, allWords) && !hasWord(line, VAT_WORDS);
+    const hasTotalAmount = total != null && amounts.includes(total);
+    for (const [cur, re] of CURRENCY_HINTS) {
+      const hits = line.match(re)?.length || 0;
+      if (!hits) continue;
+      add(cur, isTotal || hasTotalAmount ? 5 : amounts.length ? 2 : 1);
+      if (hits > 1) add(cur, 1);
+    }
+  }
+  const text = lines.join('\n');
+  for (const [cur, re] of COUNTRY_HINTS) {
+    const hits = text.match(re)?.length || 0;
+    if (hits) add(cur, Math.min(hits, 3) * 1.5);
+  }
+  const ranked = Object.entries(score).sort((a, b) => b[1] - a[1]);
+  if (!ranked.length || ranked[0][1] < 2) return null;
+  return ranked[0][0];
 }
 
 const SKIP_MERCHANT = /(?<!\p{L})(kvitto|receipt|quittung|beleg|kassa|org\.?\s?nr|orgnr|vat no|moms ?nr|ust-?id|tel|telefon|phone|datum|date|kassör|cashier|välkommen|welcome|willkommen|tack|thank|danke)(?!\p{L})|www\.|http|@|^\W*$/iu;
@@ -190,7 +225,7 @@ export function parseReceiptText(text, { now = Date.now() } = {}) {
   if (vat != null) result.vat = vat;
   const date = findDate(joined, now);
   if (date) result.date = date;
-  const currency = findCurrency(joined);
+  const currency = findCurrency(lines, amount);
   if (currency) result.currency = currency;
   const merchant = findMerchant(lines);
   if (merchant) result.merchant = merchant;
